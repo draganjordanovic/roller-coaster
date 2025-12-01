@@ -41,6 +41,15 @@ int main()
     const int NUM_TRACK_POINTS = 200; //vise tacaka da putanja bude glatka
     const float NUM_HILLS = 5.0f;
 
+    // Parametri vagona
+    const int WAGON_SEGMENTS = 4;      // 4 mala kvadrata
+    const int WAGON_VERTEX_COUNT_PER_SEGMENT = 4;
+    const float WAGON_SEGMENT_SIZE = 0.15f;   // sirina = visina (kvadrat)
+    const float WAGON_Y_BOTTOM = -0.9f;
+    const float WAGON_Y_TOP = WAGON_Y_BOTTOM + WAGON_SEGMENT_SIZE;
+    const float WAGON_X_START = -0.3f; // pocetak prvog kvadrata po x-osi
+    const float WAGON_GAP = 0.02f;           // razmak između kvadrata
+
     for (int i = 0; i < NUM_TRACK_POINTS; ++i) {
         float t = i / float(NUM_TRACK_POINTS - 1);   // t ide od 0 do 1
 
@@ -58,15 +67,25 @@ int main()
     }
 
     const int TRACK_VERTEX_COUNT = NUM_TRACK_POINTS;
+
     int WAGON_START_INDEX = TRACK_VERTEX_COUNT;
 
-    // VAGON
-    vertices.push_back({ -0.4f, -0.9f, 0.2f, 0.4f, 0.9f }); // dole levo
-    vertices.push_back({ 0.0f, -0.9f, 0.2f, 0.4f, 0.9f }); // dole desno
-    vertices.push_back({ 0.0f, -0.75f, 0.2f, 0.4f, 0.9f }); // gore desno
-    vertices.push_back({ -0.4f, -0.75f, 0.2f, 0.4f, 0.9f }); // gore levo
+    // Dodajemo segmente vagona jedan iza drugog
+    for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+        float x0 = WAGON_X_START + i * (WAGON_SEGMENT_SIZE + WAGON_GAP);     // levo
+        float x1 = x0 + WAGON_SEGMENT_SIZE;                     // desno
 
-    const int WAGON_VERTEX_COUNT = 4;
+        //boja vagona
+        float r = 0.2f, g = 0.4f, b = 0.9f;
+
+        // 4 verteksa za jedan kvadrat (TRIANGLE_FAN)
+        vertices.push_back({ x0, WAGON_Y_BOTTOM, r, g, b }); // dole levo
+        vertices.push_back({ x1, WAGON_Y_BOTTOM, r, g, b }); // dole desno
+        vertices.push_back({ x1, WAGON_Y_TOP,    r, g, b }); // gore desno
+        vertices.push_back({ x0, WAGON_Y_TOP,    r, g, b }); // gore levo
+    }
+
+    const int WAGON_TOTAL_VERTEX_COUNT = WAGON_SEGMENTS * WAGON_VERTEX_COUNT_PER_SEGMENT;
 
     // Inicijalizacija VAO i VBO, tipičnih struktura za čuvanje podataka o verteksima
     unsigned int VAO;
@@ -112,8 +131,11 @@ int main()
         // SINE
         glDrawArrays(GL_LINE_STRIP, 0, TRACK_VERTEX_COUNT);
 
-        // VAGON
-        //glDrawArrays(GL_TRIANGLE_FAN, WAGON_START_INDEX, WAGON_VERTEX_COUNT);
+        // VAGON – crtam segmente kvadrata
+        for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+            int startIndex = WAGON_START_INDEX + i * WAGON_VERTEX_COUNT_PER_SEGMENT;
+            glDrawArrays(GL_TRIANGLE_FAN, startIndex, WAGON_VERTEX_COUNT_PER_SEGMENT);
+        }
 
 
         glfwSwapBuffers(window); // Zamena bafera - prednji i zadnji bafer se menjaju kao štafeta; dok jedan procesuje, drugi se prikazuje.
