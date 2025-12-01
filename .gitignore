@@ -1,0 +1,162 @@
+# ------------------------------------------------------------------------------
+# GENERAL BUILD ARTIFACTS
+# ------------------------------------------------------------------------------
+*.exe
+*.dll
+*.so
+*.dylib
+*.out
+
+*.o
+*.obj
+*.a
+*.lib
+*.lo
+*.la
+
+*.log
+*.pch
+*.pdb
+*.ilk
+
+*.cache
+*.tmp
+*.temp
+
+# ------------------------------------------------------------------------------
+# CMAKE BUILD DIRECTORIES
+# ------------------------------------------------------------------------------
+build/
+Build/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+CTestTestfile.cmake
+
+# ------------------------------------------------------------------------------
+# VISUAL STUDIO
+# ------------------------------------------------------------------------------
+.vs/
+*.VC.db
+*.VC.opendb
+*.sdf
+*.opensdf
+*.user
+*.suo
+
+Debug/
+Release/
+x64/
+x86/
+ARM/
+ARM64/
+
+# ------------------------------------------------------------------------------
+# VSCODE
+# ------------------------------------------------------------------------------
+.vscode/
+*.code-workspace
+
+# ------------------------------------------------------------------------------
+# OPENGL / GLSL / SHADER
+# ------------------------------------------------------------------------------
+# Shader cache and compiled shaders
+*.spv
+*.glsl.cache
+*.shadercache
+
+# ------------------------------------------------------------------------------
+# IGNORE GLEW / GLFW / GLM / GLAD LOCAL INSTALLATION FILES
+# ------------------------------------------------------------------------------
+
+# 1. Extracted SDK folders
+glew/
+GLEW/
+glfw/
+GLFW/
+glm/
+GLM/
+glad/
+GLAD/
+
+# 2. Common folders created during manual library compilation
+libs/
+lib64/
+lib32/
+include/
+bin/
+
+# 3. CMake-generated build folders for dependencies
+glew-build/
+glfw-build/
+glm-build/
+glad-build/
+
+glew*/CMakeFiles/
+glfw*/CMakeFiles/
+glm*/CMakeFiles/
+glad*/CMakeFiles/
+
+# 4. ZIP or archive files used for installation
+*.zip
+*.7z
+*.tar
+*.gz
+*.tar.gz
+
+# 5. Visual Studio projects inside dependencies
+*/build/*
+*/Debug/*
+*/Release/*
+*/x64/*
+*/x86/*
+
+# 6. Ignore copied DLLs from libs
+*.dll
+
+# ------------------------------------------------------------------------------
+# PROJECT-SPECIFIC
+# ------------------------------------------------------------------------------
+bin/
+out/
+dist/
+temp/
+tmp/
+
+# ------------------------------------------------------------------------------
+# OPTIONAL RESOURCE IGNORE (uncomment if needed)
+# ------------------------------------------------------------------------------
+# *.png
+# *.jpg
+# *.jpeg
+# *.bmp
+# *.tga
+
+# ------------------------------------------------------------------------------
+# WINDOWS TRASH
+# ------------------------------------------------------------------------------
+Thumbs.db
+Desktop.ini
+
+# ------------------------------------------------------------------------------
+# MISC
+# ------------------------------------------------------------------------------
+*.DS_Store
+
+
+# Ignore any GLFW / GLM / GLEW third-party library folders
+**/glfw*/
+**/GLFW*/
+**/glew*/
+**/GLEW*/
+**/glm*/
+**/GLM*/
+**/glad*/
+**/GLAD*/
+
+# Ignore NuGet packages
+*.nupkg
+packages/
