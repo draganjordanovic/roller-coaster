@@ -43,5 +43,11 @@
     <Image Include="res\train.png">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="res\car.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\passenger.png">
+      <Filter>Resource Files</Filter>
+    </Image>
   </ItemGroup>
 </Project>

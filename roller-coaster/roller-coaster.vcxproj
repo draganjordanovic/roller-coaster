@@ -141,6 +141,8 @@
     <ClCompile Include="Util.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <Image Include="res\car.png" />
+    <Image Include="res\passenger.png" />
     <Image Include="res\train.png" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -96,7 +96,7 @@ void buildTrain(std::vector<Vertex>& vertices,
     int& wagonStartIndex)
 {
     segmentCenterX.assign(WAGON_SEGMENTS, 0.0f);
-    segmentCenterY = (WAGON_Y_BOTTOM + WAGON_Y_TOP) / 2.0f;
+    segmentCenterY = WAGON_Y_BOTTOM;
     wagonStartIndex = static_cast<int>(vertices.size());
 
     // Dodajem segmente vagona jedan iza drugog
@@ -173,7 +173,7 @@ int main()
     int uTexLocation = glGetUniformLocation(basicShader, "uTex");
 
     unsigned int wagonTexture = 0;
-    preprocessTexture(wagonTexture, "res/train.png");
+    preprocessTexture(wagonTexture, "res/car.png");
 
 
     glUseProgram(basicShader);
