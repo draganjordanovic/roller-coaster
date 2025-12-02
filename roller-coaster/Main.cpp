@@ -17,9 +17,9 @@ constexpr int   NUM_TRACK_POINTS = 200;
 constexpr float NUM_HILLS = 5.0f;
 
 // KONSTANTE ZA VAGON
-constexpr int   WAGON_SEGMENTS = 4;
+constexpr int   WAGON_SEGMENTS = 8;
 constexpr int   WAGON_VERTEX_COUNT_PER_SEGMENT = 4;
-constexpr float WAGON_SEGMENT_SIZE = 0.15f;
+constexpr float WAGON_SEGMENT_SIZE = 0.07f;
 constexpr float WAGON_Y_BOTTOM = -0.9f;
 constexpr float WAGON_Y_TOP = WAGON_Y_BOTTOM + WAGON_SEGMENT_SIZE;
 // Početni x za prvi segment (pre pomeranja po stazi).
@@ -48,8 +48,15 @@ void buildTrack(std::vector<Vertex>& vertices,
         float t = i / float(NUM_TRACK_POINTS - 1);
 
         float x = -0.9f + t * 1.8f;        // x se linijski menja od -0.9 do 0.9
-        float hills = sinf(t * NUM_HILLS * 3.14159f); //sinusna funkcija da bismo dobili brda
-        float y = -0.6f + 0.3f * hills;        // osnova y je -0.6 a amplituda je 0.3
+        float bigHill = std::sin(3.14159f * (t + 0.1f));                 // 1 veliko brdo
+        float midHill = 0.6f * std::sin(3.0f * 3.14159f * (t - 0.15f));  // 3 srednja
+        float smallWiggle = 0.3f * std::sin(8.0f * 3.14159f * t);            // sitne neravnine
+
+        float hills = bigHill + midHill + smallWiggle;
+        float yBase = -0.45f;
+        float yAmp = 0.42f;
+
+        float y = yBase + yAmp * hills;
         vertices.push_back({ x, y, 0.7f, 0.7f, 0.7f });
     }
 
