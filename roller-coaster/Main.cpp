@@ -9,6 +9,7 @@
 
 struct Vertex {
     float x, y;
+    float u, v;
     float r, g, b;
 };
 
@@ -17,9 +18,9 @@ constexpr int   NUM_TRACK_POINTS = 200;
 constexpr float NUM_HILLS = 5.0f;
 
 // KONSTANTE ZA VAGON
-constexpr int   WAGON_SEGMENTS = 8;
+constexpr int   WAGON_SEGMENTS = 4;
 constexpr int   WAGON_VERTEX_COUNT_PER_SEGMENT = 4;
-constexpr float WAGON_SEGMENT_SIZE = 0.07f;
+constexpr float WAGON_SEGMENT_SIZE = 0.1f;
 constexpr float WAGON_Y_BOTTOM = -0.9f;
 constexpr float WAGON_Y_TOP = WAGON_Y_BOTTOM + WAGON_SEGMENT_SIZE;
 // Početni x za prvi segment (pre pomeranja po stazi).
@@ -30,6 +31,19 @@ int endProgram(std::string message) {
     std::cout << message << std::endl;
     glfwTerminate();
     return -1;
+}
+
+void preprocessTexture(unsigned& texture, const char* filepath) {
+    texture = loadImageToTexture(filepath); // Učitavanje teksture
+    glBindTexture(GL_TEXTURE_2D, texture);  // Vezujemo se za teksturu kako bismo je podesili
+
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 }
 
 // buildTrack
@@ -57,7 +71,7 @@ void buildTrack(std::vector<Vertex>& vertices,
         float yAmp = 0.42f;
 
         float y = yBase + yAmp * hills;
-        vertices.push_back({ x, y, 0.7f, 0.7f, 0.7f });
+        vertices.push_back({ x, y, 0.0f, 0.0f, 0.7f, 0.7f, 0.7f });
     }
 
     int trackVertexCount = NUM_TRACK_POINTS;
@@ -92,10 +106,10 @@ void buildTrain(std::vector<Vertex>& vertices,
         float r = 0.2f, g = 0.4f, b = 0.9f; //boja vagona
         segmentCenterX[i] = (x0 + x1) / 2.0f;
         // Četiri verteksa kvadrata
-        vertices.push_back({ x0, WAGON_Y_BOTTOM, r, g, b }); // dole levo
-        vertices.push_back({ x1, WAGON_Y_BOTTOM, r, g, b }); // dole desno
-        vertices.push_back({ x1, WAGON_Y_TOP,    r, g, b }); // gore desno
-        vertices.push_back({ x0, WAGON_Y_TOP,    r, g, b }); // gore levo
+        vertices.push_back({ x0, WAGON_Y_BOTTOM, 0.0f, 0.0f, r, g, b }); // dole levo
+        vertices.push_back({ x1, WAGON_Y_BOTTOM, 1.0f, 0.0f, r, g, b }); // dole desno
+        vertices.push_back({ x1, WAGON_Y_TOP, 1.0f, 1.0f, r, g, b }); // gore desno
+        vertices.push_back({ x0, WAGON_Y_TOP, 0.0f, 1.0f, r, g, b }); // gore levo
     }
 }
 
@@ -155,6 +169,19 @@ int main()
 
     int uOffsetLocation = glGetUniformLocation(basicShader, "uOffset");
 
+    int uUseTextureLocation = glGetUniformLocation(basicShader, "useTexture");
+    int uTexLocation = glGetUniformLocation(basicShader, "uTex");
+
+    unsigned int wagonTexture = 0;
+    preprocessTexture(wagonTexture, "res/train.png");
+
+
+    glUseProgram(basicShader);
+    glUniform1i(uTexLocation, 0);
+
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     //Priprema staze
     std::vector<Vertex> vertices;
     std::vector<float> trackS;
@@ -195,13 +222,23 @@ int main()
 
     glVertexAttribPointer(
         1,
-        3,
+        2,
         GL_FLOAT,
         GL_FALSE,
         sizeof(Vertex),
         (void*)(2 * sizeof(float))
     );
     glEnableVertexAttribArray(1);
+
+    glVertexAttribPointer(
+        2,
+        3,
+        GL_FLOAT,
+        GL_FALSE,
+        sizeof(Vertex),
+        (void*)(4 * sizeof(float))
+    );
+    glEnableVertexAttribArray(2);
 
     glClearColor(0.3f, 0.1f, 0.6f, 1.0f);
 
@@ -239,9 +276,14 @@ int main()
         glUseProgram(basicShader);
         glBindVertexArray(VAO);
 
+        glUniform1i(uUseTextureLocation, GL_FALSE);
         glUniform2f(uOffsetLocation, 0.0f, 0.0f);
         glDrawArrays(GL_LINE_STRIP, 0, TRACK_VERTEX_COUNT);
 
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, wagonTexture);
+        glUniform1i(uUseTextureLocation, GL_TRUE);
         for (int i = 0; i < WAGON_SEGMENTS; ++i) {
             float sSeg = sHead - i * SEGMENT_SPACING;
 
