@@ -5,6 +5,7 @@
 #include "Util.h"
 
 #include <vector>
+#include <cmath>
 
 struct Vertex {
     float x, y;
@@ -34,6 +35,7 @@ int main()
     if (glewInit() != GLEW_OK) return endProgram("GLEW nije uspeo da se inicijalizuje.");
 
     unsigned int basicShader = createShader("basic.vert", "basic.frag");
+    int uOffsetLocation = glGetUniformLocation(basicShader, "uOffset"); //handler preko koga menjam uOffset
 
     std::vector<Vertex> vertices;
 
@@ -49,6 +51,10 @@ int main()
     const float WAGON_Y_TOP = WAGON_Y_BOTTOM + WAGON_SEGMENT_SIZE;
     const float WAGON_X_START = -0.3f; // pocetak prvog kvadrata po x-osi
     const float WAGON_GAP = 0.02f;           // razmak između kvadrata
+
+    // Centri segmenata
+    std::vector<float> segmentCenterX(WAGON_SEGMENTS);
+    float segmentCenterY = (WAGON_Y_BOTTOM + WAGON_Y_TOP) / 2.0f;
 
     for (int i = 0; i < NUM_TRACK_POINTS; ++i) {
         float t = i / float(NUM_TRACK_POINTS - 1);   // t ide od 0 do 1
@@ -68,6 +74,37 @@ int main()
 
     const int TRACK_VERTEX_COUNT = NUM_TRACK_POINTS;
 
+    std::vector<float> trackS(TRACK_VERTEX_COUNT);
+    trackS[0] = 0.0f;
+    for (int i = 1; i < TRACK_VERTEX_COUNT; ++i) {
+        float dx = vertices[i].x - vertices[i - 1].x;
+        float dy = vertices[i].y - vertices[i - 1].y;
+        float dist = std::sqrt(dx * dx + dy * dy);
+        trackS[i] = trackS[i - 1] + dist;
+    }
+    float trackTotalLength = trackS[TRACK_VERTEX_COUNT - 1];
+
+    auto getPointOnTrack = [&](float s, float& outX, float& outY) {
+        while (s < 0.0f)        s += trackTotalLength;
+        while (s > trackTotalLength) s -= trackTotalLength;
+
+        int i = 0;
+        while (i < TRACK_VERTEX_COUNT - 1 && trackS[i + 1] < s) {
+            ++i;
+        }
+
+        float segLen = trackS[i + 1] - trackS[i];
+        float tLocal = (segLen > 0.0f) ? (s - trackS[i]) / segLen : 0.0f;
+
+        float x0 = vertices[i].x;
+        float y0 = vertices[i].y;
+        float x1 = vertices[i + 1].x;
+        float y1 = vertices[i + 1].y;
+
+        outX = x0 + tLocal * (x1 - x0);
+        outY = y0 + tLocal * (y1 - y0);
+        };
+
     int WAGON_START_INDEX = TRACK_VERTEX_COUNT;
 
     // Dodajemo segmente vagona jedan iza drugog
@@ -77,6 +114,9 @@ int main()
 
         //boja vagona
         float r = 0.2f, g = 0.4f, b = 0.9f;
+
+        // zapamtimo centar ovog segmenta
+        segmentCenterX[i] = (x0 + x1) / 2.0f;
 
         // 4 verteksa za jedan kvadrat (TRIANGLE_FAN)
         vertices.push_back({ x0, WAGON_Y_BOTTOM, r, g, b }); // dole levo
@@ -121,18 +161,64 @@ int main()
 
     glClearColor(0.3f, 0.1f, 0.6f, 1.0f); // Postavljanje boje pozadine
 
+    double lastTime = glfwGetTime();
+
+    const float SPEED = 0.5f;   // brzina kretanja
+
+    // Razmak izmedju segmenata po stazi
+    const float SEGMENT_SPACING = WAGON_SEGMENT_SIZE + WAGON_GAP;
+
+    // Pocetna pozicija glave voza
+    float sHead = (WAGON_SEGMENTS - 1) * SEGMENT_SPACING;
+
+    // Voz na pocetku miruje
+    bool isRunning = false;
+
     while (!glfwWindowShouldClose(window))
     {
+        double currentTime = glfwGetTime();
+        double deltaTime = currentTime - lastTime;
+        lastTime = currentTime;
+
+        if (!isRunning && glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
+            isRunning = true;
+        }
+
+        if (isRunning) {
+            sHead += SPEED * (float)deltaTime;
+
+            float maxHead = trackTotalLength;
+
+            if (sHead >= maxHead) {
+                sHead = maxHead;
+                isRunning = false;
+            }
+        }
+
+
         glClear(GL_COLOR_BUFFER_BIT); // Bojenje pozadine
 
         glUseProgram(basicShader); // Podešavanje da se crta koristeći dati šejder
         glBindVertexArray(VAO); // Podešavanje da se crta koristeći date vertekse
 
-        // SINE
+
+        // 1)SINE
+        glUniform2f(uOffsetLocation, 0.0f, 0.0f);
         glDrawArrays(GL_LINE_STRIP, 0, TRACK_VERTEX_COUNT);
 
-        // VAGON – crtam segmente kvadrata
+        // 2)VAGON – svaki segment na svojoj tacki putanje
         for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+
+            float sSeg = sHead - i * SEGMENT_SPACING;
+
+            float pathXSeg, pathYSeg;
+            getPointOnTrack(sSeg, pathXSeg, pathYSeg);
+
+            float offsetXSeg = pathXSeg - segmentCenterX[i];
+            float offsetYSeg = pathYSeg - segmentCenterY;
+
+            glUniform2f(uOffsetLocation, offsetXSeg, offsetYSeg);
+
             int startIndex = WAGON_START_INDEX + i * WAGON_VERTEX_COUNT_PER_SEGMENT;
             glDrawArrays(GL_TRIANGLE_FAN, startIndex, WAGON_VERTEX_COUNT_PER_SEGMENT);
         }
