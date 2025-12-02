@@ -18,14 +18,15 @@ constexpr int   NUM_TRACK_POINTS = 200;
 constexpr float NUM_HILLS = 5.0f;
 
 // KONSTANTE ZA VAGON
-constexpr int   WAGON_SEGMENTS = 4;
+constexpr int   WAGON_SEGMENTS = 8;
 constexpr int   WAGON_VERTEX_COUNT_PER_SEGMENT = 4;
 constexpr float WAGON_SEGMENT_SIZE = 0.1f;
 constexpr float WAGON_Y_BOTTOM = -0.9f;
 constexpr float WAGON_Y_TOP = WAGON_Y_BOTTOM + WAGON_SEGMENT_SIZE;
 // Početni x za prvi segment (pre pomeranja po stazi).
 constexpr float WAGON_X_START = -0.3f;
-constexpr float WAGON_GAP = 0.02f;
+constexpr float WAGON_GAP = 0.002f;
+constexpr int   PASSENGER_VERTEX_COUNT_PER_SEGMENT = 4;
 
 int endProgram(std::string message) {
     std::cout << message << std::endl;
@@ -93,7 +94,8 @@ void buildTrack(std::vector<Vertex>& vertices,
 void buildTrain(std::vector<Vertex>& vertices,
     std::vector<float>& segmentCenterX,
     float& segmentCenterY,
-    int& wagonStartIndex)
+    int& wagonStartIndex,
+    int& passengerStartIndex)
 {
     segmentCenterX.assign(WAGON_SEGMENTS, 0.0f);
     segmentCenterY = WAGON_Y_BOTTOM;
@@ -110,6 +112,32 @@ void buildTrain(std::vector<Vertex>& vertices,
         vertices.push_back({ x1, WAGON_Y_BOTTOM, 1.0f, 0.0f, r, g, b }); // dole desno
         vertices.push_back({ x1, WAGON_Y_TOP, 1.0f, 1.0f, r, g, b }); // gore desno
         vertices.push_back({ x0, WAGON_Y_TOP, 0.0f, 1.0f, r, g, b }); // gore levo
+    }
+
+    //segmenti za putnike
+
+    passengerStartIndex = static_cast<int>(vertices.size());
+    for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+        float x0 = WAGON_X_START + i * (WAGON_SEGMENT_SIZE + WAGON_GAP);
+        float x1 = x0 + WAGON_SEGMENT_SIZE;
+
+        float marginX = 0.015f;
+        float marginYBottom = 0.01f;
+        float marginYTop = 0.02f;
+
+        float passengerYOffset = 0.04f;
+
+        float px0 = x0 + marginX;
+        float px1 = x1 - marginX;
+        float py0 = WAGON_Y_BOTTOM + marginYBottom + passengerYOffset;
+        float py1 = WAGON_Y_TOP - marginYTop + passengerYOffset;
+
+        float r = 1.0f, g = 1.0f, b = 1.0f;
+
+        vertices.push_back({ px0, py0, 0.0f, 0.0f, r, g, b }); // dole levo
+        vertices.push_back({ px1, py0, 1.0f, 0.0f, r, g, b }); // dole desno
+        vertices.push_back({ px1, py1, 1.0f, 1.0f, r, g, b }); // gore desno
+        vertices.push_back({ px0, py1, 0.0f, 1.0f, r, g, b }); // gore levo
     }
 }
 
@@ -175,6 +203,9 @@ int main()
     unsigned int wagonTexture = 0;
     preprocessTexture(wagonTexture, "res/car.png");
 
+    unsigned int passengerTexture = 0;
+    preprocessTexture(passengerTexture, "res/passenger.png");
+
 
     glUseProgram(basicShader);
     glUniform1i(uTexLocation, 0);
@@ -194,9 +225,10 @@ int main()
     std::vector<float> segmentCenterX(WAGON_SEGMENTS);
     float segmentCenterY = 0.0f;
     int WAGON_START_INDEX = 0;
-    buildTrain(vertices, segmentCenterX, segmentCenterY, WAGON_START_INDEX);
-    const int WAGON_TOTAL_VERTEX_COUNT = WAGON_SEGMENTS * WAGON_VERTEX_COUNT_PER_SEGMENT;
-    (void)WAGON_TOTAL_VERTEX_COUNT;
+    int PASSENGER_START_INDEX = 0;
+
+    buildTrain(vertices, segmentCenterX, segmentCenterY,
+        WAGON_START_INDEX, PASSENGER_START_INDEX);
 
     unsigned int VAO;
     unsigned int VBO;
@@ -251,11 +283,26 @@ int main()
     float sHead = (WAGON_SEGMENTS - 1) * SEGMENT_SPACING;
     bool isRunning = false;
 
+    //da li je određeni segment popunjen putnikom
+    std::vector<bool> segmentHasPassenger(WAGON_SEGMENTS, false);
+    int passengersCount = 0;
+
+    bool spaceWasPressed = false;
+
     while (!glfwWindowShouldClose(window))
     {
         double currentTime = glfwGetTime();
         double deltaTime = currentTime - lastTime;
         lastTime = currentTime;
+
+        bool spaceNow = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
+        if (spaceNow && !spaceWasPressed) {
+            if (passengersCount < WAGON_SEGMENTS) {
+                segmentHasPassenger[passengersCount] = true;
+                passengersCount++;
+            }
+        }
+        spaceWasPressed = spaceNow;
 
         if (!isRunning && glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
             isRunning = true;
@@ -281,9 +328,6 @@ int main()
         glDrawArrays(GL_LINE_STRIP, 0, TRACK_VERTEX_COUNT);
 
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, wagonTexture);
-        glUniform1i(uUseTextureLocation, GL_TRUE);
         for (int i = 0; i < WAGON_SEGMENTS; ++i) {
             float sSeg = sHead - i * SEGMENT_SPACING;
 
@@ -291,14 +335,25 @@ int main()
             getPointOnTrack(sSeg, pathXSeg, pathYSeg,
                 vertices, trackS, trackTotalLength);
 
-            //offset: koliko da pomerimo ovaj segment
+            // offset: koliko da pomerimo ceo „set“ (auto + putnik)
             float offsetXSeg = pathXSeg - segmentCenterX[i];
             float offsetYSeg = pathYSeg - segmentCenterY;
-
             glUniform2f(uOffsetLocation, offsetXSeg, offsetYSeg);
-            int startIndex = WAGON_START_INDEX + i * WAGON_VERTEX_COUNT_PER_SEGMENT;
 
-            glDrawArrays(GL_TRIANGLE_FAN, startIndex, WAGON_VERTEX_COUNT_PER_SEGMENT);
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_2D, wagonTexture);
+            glUniform1i(uUseTextureLocation, GL_TRUE);
+
+            int carStartIndex = WAGON_START_INDEX + i * WAGON_VERTEX_COUNT_PER_SEGMENT;
+            glDrawArrays(GL_TRIANGLE_FAN, carStartIndex, WAGON_VERTEX_COUNT_PER_SEGMENT);
+
+            // 2) ako segment ima putnika crtamo i njega
+            if (segmentHasPassenger[i]) {
+                glBindTexture(GL_TEXTURE_2D, passengerTexture);
+                int passengerStart =
+                    PASSENGER_START_INDEX + i * PASSENGER_VERTEX_COUNT_PER_SEGMENT;
+                glDrawArrays(GL_TRIANGLE_FAN, passengerStart, PASSENGER_VERTEX_COUNT_PER_SEGMENT);
+            }
         }
 
         glfwSwapBuffers(window);
