@@ -299,6 +299,7 @@ int main()
 
     bool spaceWasPressed = false;
     bool leftMouseWasPressed = false;
+    bool enterWasPressed = false;
 
     // offseti segmenta za svaki frejm
     std::vector<float> segOffsetX(WAGON_SEGMENTS, 0.0f);
@@ -312,7 +313,7 @@ int main()
 
         // SPACE dodaje putnika
         bool spaceNow = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
-        if (spaceNow && !spaceWasPressed) {
+        if (!isRunning && spaceNow && !spaceWasPressed) {
             if (passengersCount < WAGON_SEGMENTS) {
                 segmentHasPassenger[passengersCount] = true;
                 passengersCount++;
@@ -320,9 +321,21 @@ int main()
         }
         spaceWasPressed = spaceNow;
 
-        if (!isRunning && glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) {
-            isRunning = true;
+        // ENTER pokreće voz SAMO ako su svi putnici vezani
+        bool enterNow = (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS);
+        if (enterNow && !enterWasPressed && !isRunning) {
+            bool allSafe = true;
+            for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+                if (segmentHasPassenger[i] && !passengerBuckled[i]) {
+                    allSafe = false;
+                    break;
+                }
+            }
+            if (allSafe) {
+                isRunning = true;
+            }
         }
+        enterWasPressed = enterNow;
 
         if (isRunning) {
             sHead += SPEED * static_cast<float>(deltaTime);
@@ -352,11 +365,11 @@ int main()
             double mouseX, mouseY;
             glfwGetCursorPos(window, &mouseX, &mouseY);
 
-            int fbWidth, fbHeight;
-            glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+            int fbWidth2, fbHeight2;
+            glfwGetFramebufferSize(window, &fbWidth2, &fbHeight2);
 
-            float xNdc = 2.0f * static_cast<float>(mouseX) / fbWidth - 1.0f;
-            float yNdc = -2.0f * static_cast<float>(mouseY) / fbHeight + 1.0f;
+            float xNdc = 2.0f * static_cast<float>(mouseX) / fbWidth2 - 1.0f;
+            float yNdc = -2.0f * static_cast<float>(mouseY) / fbHeight2 + 1.0f;
 
             for (int i = 0; i < WAGON_SEGMENTS; ++i) {
                 if (!segmentHasPassenger[i] || passengerBuckled[i])
