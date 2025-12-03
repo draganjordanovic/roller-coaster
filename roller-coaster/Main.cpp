@@ -65,7 +65,7 @@ void buildTrack(std::vector<Vertex>& vertices,
         float x = -0.9f + t * 1.8f;        // x se linijski menja od -0.9 do 0.9
         float bigHill = std::sin(3.14159f * (t + 0.1f));                 // 1 veliko brdo
         float midHill = 0.6f * std::sin(3.0f * 3.14159f * (t - 0.15f));  // 3 srednja
-        float smallWiggle = 0.3f * std::sin(8.0f * 3.14159f * t);            // sitne neravnine
+        float smallWiggle = 0.3f * std::sin(8.0f * 3.14159f * t);           // sitne neravnine
 
         float hills = bigHill + midHill + smallWiggle;
         float yBase = -0.45f;
@@ -102,20 +102,20 @@ void buildTrain(std::vector<Vertex>& vertices,
     wagonStartIndex = static_cast<int>(vertices.size());
 
     // Dodajem segmente vagona jedan iza drugog
-    for (int i = 0; i < WAGON_SEGMENTS; ++i) {        
-        float x0 = WAGON_X_START + i * (WAGON_SEGMENT_SIZE + WAGON_GAP);    // Levi x        
-        float x1 = x0 + WAGON_SEGMENT_SIZE; // Desni x
-        float r = 0.2f, g = 0.4f, b = 0.9f; //boja vagona
+    for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+        float x0 = WAGON_X_START + i * (WAGON_SEGMENT_SIZE + WAGON_GAP); // Levi x
+        float x1 = x0 + WAGON_SEGMENT_SIZE;                              // Desni x
+        float r = 0.2f, g = 0.4f, b = 0.9f;                              // boja vagona
+
         segmentCenterX[i] = (x0 + x1) / 2.0f;
-        // Četiri verteksa kvadrata
+
         vertices.push_back({ x0, WAGON_Y_BOTTOM, 0.0f, 0.0f, r, g, b }); // dole levo
         vertices.push_back({ x1, WAGON_Y_BOTTOM, 1.0f, 0.0f, r, g, b }); // dole desno
-        vertices.push_back({ x1, WAGON_Y_TOP, 1.0f, 1.0f, r, g, b }); // gore desno
-        vertices.push_back({ x0, WAGON_Y_TOP, 0.0f, 1.0f, r, g, b }); // gore levo
+        vertices.push_back({ x1, WAGON_Y_TOP,    1.0f, 1.0f, r, g, b }); // gore desno
+        vertices.push_back({ x0, WAGON_Y_TOP,    0.0f, 1.0f, r, g, b }); // gore levo
     }
 
     //segmenti za putnike
-
     passengerStartIndex = static_cast<int>(vertices.size());
     for (int i = 0; i < WAGON_SEGMENTS; ++i) {
         float x0 = WAGON_X_START + i * (WAGON_SEGMENT_SIZE + WAGON_GAP);
@@ -179,7 +179,6 @@ void getPointOnTrack(float s,
 
 int main()
 {
-
     // Inicijalizacija GLFW
     glfwInit();
 
@@ -187,16 +186,22 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    GLFWwindow* window = glfwCreateWindow(1800, 1300, "Rolerkoster", NULL, NULL);
+    const int WINDOW_WIDTH = 1800;
+    const int WINDOW_HEIGHT = 1300;
+
+    GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Rolerkoster", NULL, NULL);
     if (window == NULL) return endProgram("Prozor nije uspeo da se kreira.");
     glfwMakeContextCurrent(window);
+
+    int fbWidth, fbHeight;
+    glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+    glViewport(0, 0, fbWidth, fbHeight);
 
     if (glewInit() != GLEW_OK) return endProgram("GLEW nije uspeo da se inicijalizuje.");
 
     unsigned int basicShader = createShader("basic.vert", "basic.frag");
 
     int uOffsetLocation = glGetUniformLocation(basicShader, "uOffset");
-
     int uUseTextureLocation = glGetUniformLocation(basicShader, "useTexture");
     int uTexLocation = glGetUniformLocation(basicShader, "uTex");
 
@@ -206,6 +211,9 @@ int main()
     unsigned int passengerTexture = 0;
     preprocessTexture(passengerTexture, "res/passenger.png");
 
+    // tekstura sa pojasom
+    unsigned int seatbeltTexture = 0;
+    preprocessTexture(seatbeltTexture, "res/seatbelt.png");
 
     glUseProgram(basicShader);
     glUniform1i(uTexLocation, 0);
@@ -215,7 +223,7 @@ int main()
 
     //Priprema staze
     std::vector<Vertex> vertices;
-    std::vector<float> trackS;
+    std::vector<float>  trackS;
     float trackTotalLength = 0.0f;
 
     buildTrack(vertices, trackS, trackTotalLength);
@@ -224,8 +232,8 @@ int main()
     //Priprema voza
     std::vector<float> segmentCenterX(WAGON_SEGMENTS);
     float segmentCenterY = 0.0f;
-    int WAGON_START_INDEX = 0;
-    int PASSENGER_START_INDEX = 0;
+    int   WAGON_START_INDEX = 0;
+    int   PASSENGER_START_INDEX = 0;
 
     buildTrain(vertices, segmentCenterX, segmentCenterY,
         WAGON_START_INDEX, PASSENGER_START_INDEX);
@@ -275,19 +283,26 @@ int main()
     glClearColor(0.3f, 0.1f, 0.6f, 1.0f);
 
     // animacione promenljive
-
     double lastTime = glfwGetTime();
     const float SPEED = 0.5f;
     const float SEGMENT_SPACING = WAGON_SEGMENT_SIZE + WAGON_GAP;
 
     float sHead = (WAGON_SEGMENTS - 1) * SEGMENT_SPACING;
-    bool isRunning = false;
+    bool  isRunning = false;
 
     //da li je određeni segment popunjen putnikom
     std::vector<bool> segmentHasPassenger(WAGON_SEGMENTS, false);
     int passengersCount = 0;
 
+    // da li je putnik vezan pojasom
+    std::vector<bool> passengerBuckled(WAGON_SEGMENTS, false);
+
     bool spaceWasPressed = false;
+    bool leftMouseWasPressed = false;
+
+    // offseti segmenta za svaki frejm
+    std::vector<float> segOffsetX(WAGON_SEGMENTS, 0.0f);
+    std::vector<float> segOffsetY(WAGON_SEGMENTS, 0.0f);
 
     while (!glfwWindowShouldClose(window))
     {
@@ -295,6 +310,7 @@ int main()
         double deltaTime = currentTime - lastTime;
         lastTime = currentTime;
 
+        // SPACE dodaje putnika
         bool spaceNow = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
         if (spaceNow && !spaceWasPressed) {
             if (passengersCount < WAGON_SEGMENTS) {
@@ -318,6 +334,69 @@ int main()
             }
         }
 
+        // izračunamo offset za svaki segment za ovaj frejm
+        for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+            float sSeg = sHead - i * SEGMENT_SPACING;
+
+            float pathXSeg, pathYSeg;
+            getPointOnTrack(sSeg, pathXSeg, pathYSeg,
+                vertices, trackS, trackTotalLength);
+
+            segOffsetX[i] = pathXSeg - segmentCenterX[i];
+            segOffsetY[i] = pathYSeg - segmentCenterY;
+        }
+
+        // levi klik – pokušaj da "vežeš pojas" putniku na kog je kliknuto
+        bool leftNow = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+        if (leftNow && !leftMouseWasPressed) {
+            double mouseX, mouseY;
+            glfwGetCursorPos(window, &mouseX, &mouseY);
+
+            int fbWidth, fbHeight;
+            glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
+
+            float xNdc = 2.0f * static_cast<float>(mouseX) / fbWidth - 1.0f;
+            float yNdc = -2.0f * static_cast<float>(mouseY) / fbHeight + 1.0f;
+
+            for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+                if (!segmentHasPassenger[i] || passengerBuckled[i])
+                    continue;
+
+                int pStart = PASSENGER_START_INDEX + i * PASSENGER_VERTEX_COUNT_PER_SEGMENT;
+                const Vertex& v0 = vertices[pStart + 0];
+                const Vertex& v1 = vertices[pStart + 1];
+                const Vertex& v2 = vertices[pStart + 2];
+                const Vertex& v3 = vertices[pStart + 3];
+
+                float minX = v0.x, maxX = v0.x;
+                float minY = v0.y, maxY = v0.y;
+
+                auto expandBounds = [&](const Vertex& v) {
+                    if (v.x < minX) minX = v.x;
+                    if (v.x > maxX) maxX = v.x;
+                    if (v.y < minY) minY = v.y;
+                    if (v.y > maxY) maxY = v.y;
+                    };
+
+                expandBounds(v1);
+                expandBounds(v2);
+                expandBounds(v3);
+
+                minX += segOffsetX[i];
+                maxX += segOffsetX[i];
+                minY += segOffsetY[i];
+                maxY += segOffsetY[i];
+
+                if (xNdc >= minX && xNdc <= maxX &&
+                    yNdc >= minY && yNdc <= maxY)
+                {
+                    passengerBuckled[i] = true;
+                    break;
+                }
+            }
+        }
+        leftMouseWasPressed = leftNow;
+
         glClear(GL_COLOR_BUFFER_BIT);
 
         glUseProgram(basicShader);
@@ -327,17 +406,9 @@ int main()
         glUniform2f(uOffsetLocation, 0.0f, 0.0f);
         glDrawArrays(GL_LINE_STRIP, 0, TRACK_VERTEX_COUNT);
 
-
         for (int i = 0; i < WAGON_SEGMENTS; ++i) {
-            float sSeg = sHead - i * SEGMENT_SPACING;
-
-            float pathXSeg, pathYSeg;
-            getPointOnTrack(sSeg, pathXSeg, pathYSeg,
-                vertices, trackS, trackTotalLength);
-
-            // offset: koliko da pomerimo ceo „set“ (auto + putnik)
-            float offsetXSeg = pathXSeg - segmentCenterX[i];
-            float offsetYSeg = pathYSeg - segmentCenterY;
+            float offsetXSeg = segOffsetX[i];
+            float offsetYSeg = segOffsetY[i];
             glUniform2f(uOffsetLocation, offsetXSeg, offsetYSeg);
 
             glActiveTexture(GL_TEXTURE0);
@@ -347,9 +418,10 @@ int main()
             int carStartIndex = WAGON_START_INDEX + i * WAGON_VERTEX_COUNT_PER_SEGMENT;
             glDrawArrays(GL_TRIANGLE_FAN, carStartIndex, WAGON_VERTEX_COUNT_PER_SEGMENT);
 
-            // 2) ako segment ima putnika crtamo i njega
             if (segmentHasPassenger[i]) {
-                glBindTexture(GL_TEXTURE_2D, passengerTexture);
+                unsigned int tex = passengerBuckled[i] ? seatbeltTexture : passengerTexture;
+                glBindTexture(GL_TEXTURE_2D, tex);
+
                 int passengerStart =
                     PASSENGER_START_INDEX + i * PASSENGER_VERTEX_COUNT_PER_SEGMENT;
                 glDrawArrays(GL_TRIANGLE_FAN, passengerStart, PASSENGER_VERTEX_COUNT_PER_SEGMENT);

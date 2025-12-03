@@ -49,5 +49,8 @@
     <Image Include="res\passenger.png">
       <Filter>Resource Files</Filter>
     </Image>
+    <Image Include="res\seatbelt.png">
+      <Filter>Resource Files</Filter>
+    </Image>
   </ItemGroup>
 </Project>
