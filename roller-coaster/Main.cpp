@@ -284,7 +284,15 @@ int main()
 
     // animacione promenljive
     double lastTime = glfwGetTime();
-    const float SPEED = 0.5f;
+
+    // ubrzanje i brzinu
+    const float START_ACCEL = 0.4f;
+    const float GRAVITY_ACCEL = 1.8f;
+    const float MAX_SPEED = 1.6f;
+    const float MIN_SPEED = 0.1f;
+
+    float currentSpeed = 0.0f;
+
     const float SEGMENT_SPACING = WAGON_SEGMENT_SIZE + WAGON_GAP;
 
     float sHead = (WAGON_SEGMENTS - 1) * SEGMENT_SPACING;
@@ -338,12 +346,32 @@ int main()
         enterWasPressed = enterNow;
 
         if (isRunning) {
-            sHead += SPEED * static_cast<float>(deltaTime);
             float maxHead = trackTotalLength;
+
+            // deo staze za računjanje nagiba
+            float ds = trackTotalLength / NUM_TRACK_POINTS;
+
+            float x0, y0, x1, y1;
+            getPointOnTrack(sHead, x0, y0, vertices, trackS, trackTotalLength);
+            getPointOnTrack(sHead + ds, x1, y1, vertices, trackS, trackTotalLength);
+
+            float dy = y1 - y0;            // ako je dy < 0 -> nizbrdica, dy > 0 -> uzbrdica
+
+            float accel = START_ACCEL + (-dy) * GRAVITY_ACCEL;
+
+            // update brzine
+            currentSpeed += accel * static_cast<float>(deltaTime);
+
+            if (currentSpeed > MAX_SPEED) currentSpeed = MAX_SPEED;
+            if (currentSpeed < MIN_SPEED) currentSpeed = MIN_SPEED;
+
+            // pomeranje po stazi
+            sHead += currentSpeed * static_cast<float>(deltaTime);
 
             if (sHead >= maxHead) {
                 sHead = maxHead;
                 isRunning = false;
+                currentSpeed = 0.0f;   // reset brzine za sledeću vožnju
             }
         }
 
