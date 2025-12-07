@@ -10,6 +10,7 @@
 #include <thread>
 #include <chrono>
 
+#include <algorithm>
 #include "stb_image.h"
 
 
@@ -183,6 +184,61 @@ void getPointOnTrack(float s,
     outY = y0 + tLocal * (y1 - y0);
 }
 
+void setupCursor(GLFWwindow* window)
+{
+    int curWidth, curHeight, curChannels;
+    unsigned char* cursorPixels = stbi_load("res/cursor.png",
+        &curWidth, &curHeight,
+        &curChannels, 4);
+
+    if (!cursorPixels)
+    {
+        std::cout << "Nemoguce ucitati sliku kursora!\n";
+        return;
+    }
+
+    float scale = 0.05f;
+    int smallW = std::max(1, int(curWidth * scale));
+    int smallH = std::max(1, int(curHeight * scale));
+
+    std::vector<unsigned char> smallPixels(smallW * smallH * 4);
+
+    for (int y = 0; y < smallH; ++y) {
+        for (int x = 0; x < smallW; ++x) {
+            int srcX = int(float(x) / scale);
+            int srcY = int(float(y) / scale);
+            if (srcX >= curWidth)  srcX = curWidth - 1;
+            if (srcY >= curHeight) srcY = curHeight - 1;
+
+            int dstIndex = (y * smallW + x) * 4;
+            int srcIndex = (srcY * curWidth + srcX) * 4;
+
+            smallPixels[dstIndex + 0] = cursorPixels[srcIndex + 0];
+            smallPixels[dstIndex + 1] = cursorPixels[srcIndex + 1];
+            smallPixels[dstIndex + 2] = cursorPixels[srcIndex + 2];
+            smallPixels[dstIndex + 3] = cursorPixels[srcIndex + 3];
+        }
+    }
+
+    stbi_image_free(cursorPixels);
+
+    GLFWimage cursorImage;
+    cursorImage.width = smallW;
+    cursorImage.height = smallH;
+    cursorImage.pixels = smallPixels.data();
+
+    int hotspotX = smallW / 2;
+    int hotspotY = smallH / 2;
+
+    GLFWcursor* cursor = glfwCreateCursor(&cursorImage, hotspotX, hotspotY);
+    if (!cursor) {
+        std::cout << "Nemoguce kreirati GLFW kursor!\n";
+        return;
+    }
+
+    glfwSetCursor(window, cursor);
+}
+
 int main()
 {
     // Inicijalizacija GLFW
@@ -205,58 +261,7 @@ int main()
     if (window == NULL) return endProgram("Prozor nije uspeo da se kreira.");
     glfwMakeContextCurrent(window);
 
-    int curWidth, curHeight, curChannels;
-    unsigned char* cursorPixels = stbi_load("res/cursor.png",
-        &curWidth, &curHeight,
-        &curChannels, 4);
-
-    if (cursorPixels)
-    {
-        float scale = 0.05f;
-        int smallW = std::max(1, int(curWidth * scale));
-        int smallH = std::max(1, int(curHeight * scale));
-
-        std::vector<unsigned char> smallPixels(smallW * smallH * 4);
-
-        for (int y = 0; y < smallH; ++y) {
-            for (int x = 0; x < smallW; ++x) {
-                int srcX = int(float(x) / scale);
-                int srcY = int(float(y) / scale);
-                if (srcX >= curWidth)  srcX = curWidth - 1;
-                if (srcY >= curHeight) srcY = curHeight - 1;
-
-                int dstIndex = (y * smallW + x) * 4;
-                int srcIndex = (srcY * curWidth + srcX) * 4;
-
-                smallPixels[dstIndex + 0] = cursorPixels[srcIndex + 0]; // R
-                smallPixels[dstIndex + 1] = cursorPixels[srcIndex + 1]; // G
-                smallPixels[dstIndex + 2] = cursorPixels[srcIndex + 2]; // B
-                smallPixels[dstIndex + 3] = cursorPixels[srcIndex + 3]; // A
-            }
-        }
-
-        stbi_image_free(cursorPixels);
-
-        GLFWimage cursorImage;
-        cursorImage.width = smallW;
-        cursorImage.height = smallH;
-        cursorImage.pixels = smallPixels.data();
-
-        int hotspotX = smallW / 2;
-        int hotspotY = smallH / 2;
-
-        GLFWcursor* cursor = glfwCreateCursor(&cursorImage, hotspotX, hotspotY);
-        if (cursor) {
-            glfwSetCursor(window, cursor);
-        }
-        else {
-            std::cout << "Nemoguce kreirati GLFW kursor!\n";
-        }
-    }
-    else
-    {
-        std::cout << "Nemoguce ucitati sliku kursora!\n";
-    }
+    setupCursor(window);
 
     int fbWidth, fbHeight;
     glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
@@ -320,7 +325,7 @@ int main()
     float y1 = 0.98f;
 
     float r = 1.0f, g = 1.0f, b = 1.0f;
-    
+
     vertices.push_back({ x0, y0, 0.0f, 0.0f, r, g, b }); // dole levo    
     vertices.push_back({ x1, y0, 1.0f, 0.0f, r, g, b }); // dole desno    
     vertices.push_back({ x1, y1, 1.0f, 1.0f, r, g, b }); // gore desno    
