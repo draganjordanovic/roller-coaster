@@ -35,6 +35,27 @@ constexpr float WAGON_X_START = -0.3f;
 constexpr float WAGON_GAP = 0.002f;
 constexpr int   PASSENGER_VERTEX_COUNT_PER_SEGMENT = 4;
 
+// animacione promenljive / konstante
+const double TARGET_FRAME_TIME = 1.0 / 75.0;
+
+// ubrzanje i brzina
+const float START_ACCEL = 0.4f;
+const float GRAVITY_ACCEL = 1.8f;
+const float MAX_SPEED = 1.6f;
+const float MIN_SPEED = 0.1f;
+
+// konstanta brzina povratka
+const float RETURN_SPEED = 0.8f;
+const float EMERGENCY_RETURN_SPEED = 0.3f;
+// negativno ubrzanje
+const float EMERGENCY_DECEL = 1.2f;
+
+const float SEGMENT_SPACING = WAGON_SEGMENT_SIZE + WAGON_GAP;
+const float START_S_HEAD = (WAGON_SEGMENTS - 1) * SEGMENT_SPACING;
+
+const double WAIT_TIME = 3.0;
+const double EMERGENCY_WAIT_TIME = 10.0;
+
 int endProgram(std::string message) {
     std::cout << message << std::endl;
     glfwTerminate();
@@ -308,6 +329,311 @@ void handleKeyboardInput(
     }
 }
 
+void updateState(
+    double deltaTime,
+    float& sHead,
+    float& currentSpeed,
+    bool& isRunning,
+    bool& isReturning,
+    bool& isWaitingBeforeReturn,
+    bool& isDisembarking,
+    double& waitTimer,
+    bool& isEmergencyDecel,
+    bool& isEmergencyWaiting,
+    double& emergencyWaitTimer,
+    bool& returnFromEmergency,
+    std::vector<bool>& passengerBuckled,
+    std::vector<bool>& passengerSick,
+    const std::vector<float>& trackS,
+    float trackTotalLength,
+    const std::vector<Vertex>& vertices,
+    const std::vector<float>& segmentCenterX,
+    float segmentCenterY,
+    std::vector<float>& segOffsetX,
+    std::vector<float>& segOffsetY,
+    std::vector<bool>& segmentHasPassenger,
+    int& passengersCount
+)
+{
+    if (isRunning && !isEmergencyDecel) {
+        float maxHead = trackTotalLength;
+
+        // deo staze za računjanje nagiba
+        float ds = trackTotalLength / NUM_TRACK_POINTS;
+
+        float x0, y0, x1, y1;
+        getPointOnTrack(sHead, x0, y0, vertices, trackS, trackTotalLength);
+        getPointOnTrack(sHead + ds, x1, y1, vertices, trackS, trackTotalLength);
+
+        float dy = y1 - y0;            // ako je dy < 0 -> nizbrdica, dy > 0 -> uzbrdica
+
+        float accel = START_ACCEL + (-dy) * GRAVITY_ACCEL;
+
+        // update brzine
+        currentSpeed += accel * static_cast<float>(deltaTime);
+
+        if (currentSpeed > MAX_SPEED) currentSpeed = MAX_SPEED;
+        if (currentSpeed < MIN_SPEED) currentSpeed = MIN_SPEED;
+
+        // pomeranje po stazi
+        sHead += currentSpeed * static_cast<float>(deltaTime);
+
+        if (sHead >= maxHead) {
+            sHead = maxHead;
+            isRunning = false;
+            currentSpeed = 0.0f;
+            isWaitingBeforeReturn = true;
+            waitTimer = 0.0;
+        }
+    }
+
+    if (isEmergencyDecel) {
+        currentSpeed -= EMERGENCY_DECEL * static_cast<float>(deltaTime);
+        if (currentSpeed < 0.0f) currentSpeed = 0.0f;
+
+        // voz se pomera jos malo dok ne stane
+        sHead += currentSpeed * static_cast<float>(deltaTime);
+
+        if (sHead > trackTotalLength) {
+            sHead = trackTotalLength;
+        }
+
+        // cekamo 10sekundi
+        if (currentSpeed <= 0.01f) {
+            currentSpeed = 0.0f;
+            isEmergencyDecel = false;
+            isRunning = false;
+
+            isEmergencyWaiting = true;
+            emergencyWaitTimer = 0.0;
+            returnFromEmergency = true;  // znaci da se vraca sporije
+        }
+    }
+
+    if (isWaitingBeforeReturn) {
+        waitTimer += deltaTime;
+
+        if (waitTimer >= WAIT_TIME) {
+            isWaitingBeforeReturn = false;
+            isReturning = true;
+        }
+    }
+
+    // cekamo 10 sekundi
+    if (isEmergencyWaiting) {
+        emergencyWaitTimer += deltaTime;
+        if (emergencyWaitTimer >= EMERGENCY_WAIT_TIME) {
+            isEmergencyWaiting = false;
+            isReturning = true;
+        }
+    }
+
+    // povratak voza unazad konstantnom brzinom
+    if (isReturning) {
+        float usedReturnSpeed = returnFromEmergency ? EMERGENCY_RETURN_SPEED
+            : RETURN_SPEED;
+
+        sHead -= usedReturnSpeed * static_cast<float>(deltaTime);
+
+        if (sHead <= START_S_HEAD) {
+            sHead = START_S_HEAD;
+            isReturning = false;
+            currentSpeed = 0.0f;
+
+            // svi putnici se odvezuju i vracaju u normalno stanje
+            for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+                passengerBuckled[i] = false;
+                passengerSick[i] = false;
+            }
+
+            // rezim uklanjanja putnika
+            isDisembarking = false;
+            for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+                if (segmentHasPassenger[i]) {
+                    isDisembarking = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    // racuna offset za svaki segment za ovaj frejm
+    for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+        float sSeg = sHead - i * SEGMENT_SPACING;
+
+        float pathXSeg, pathYSeg;
+        getPointOnTrack(sSeg, pathXSeg, pathYSeg,
+            vertices, trackS, trackTotalLength);
+
+        segOffsetX[i] = pathXSeg - segmentCenterX[i];
+        segOffsetY[i] = pathYSeg - segmentCenterY;
+    }
+}
+
+void handleMouseClick(
+    GLFWwindow* window,
+    bool& leftMouseWasPressed,
+    bool isDisembarking,
+    int& passengersCount,
+    std::vector<bool>& segmentHasPassenger,
+    std::vector<bool>& passengerBuckled,
+    std::vector<bool>& passengerSick,
+    int PASSENGER_START_INDEX,
+    const std::vector<Vertex>& vertices,
+    const std::vector<float>& segOffsetX,
+    const std::vector<float>& segOffsetY
+)
+{
+    bool leftNow = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
+    if (!(leftNow && !leftMouseWasPressed)) {
+        leftMouseWasPressed = leftNow;
+        return;
+    }
+
+    double mouseX, mouseY;
+    glfwGetCursorPos(window, &mouseX, &mouseY);
+
+    int fbWidth2, fbHeight2;
+    glfwGetFramebufferSize(window, &fbWidth2, &fbHeight2);
+
+    float xNdc = 2.0f * static_cast<float>(mouseX) / fbWidth2 - 1.0f;
+    float yNdc = -2.0f * static_cast<float>(mouseY) / fbHeight2 + 1.0f;
+
+    for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+
+        if (isDisembarking) {
+            if (!segmentHasPassenger[i]) continue;
+        }
+        else {
+            if (!segmentHasPassenger[i] || passengerBuckled[i]) continue;
+        }
+
+        int pStart = PASSENGER_START_INDEX + i * PASSENGER_VERTEX_COUNT_PER_SEGMENT;
+        const Vertex& v0 = vertices[pStart + 0];
+        const Vertex& v1 = vertices[pStart + 1];
+        const Vertex& v2 = vertices[pStart + 2];
+        const Vertex& v3 = vertices[pStart + 3];
+
+        float minX = v0.x, maxX = v0.x;
+        float minY = v0.y, maxY = v0.y;
+
+        auto expandBounds = [&](const Vertex& v) {
+            if (v.x < minX) minX = v.x;
+            if (v.x > maxX) maxX = v.x;
+            if (v.y < minY) minY = v.y;
+            if (v.y > maxY) maxY = v.y;
+            };
+
+        expandBounds(v1);
+        expandBounds(v2);
+        expandBounds(v3);
+
+        minX += segOffsetX[i];
+        maxX += segOffsetX[i];
+        minY += segOffsetY[i];
+        maxY += segOffsetY[i];
+
+        if (xNdc >= minX && xNdc <= maxX &&
+            yNdc >= minY && yNdc <= maxY)
+        {
+            if (isDisembarking) {
+                // klik uklanja putnika
+                segmentHasPassenger[i] = false;
+                passengerBuckled[i] = false;
+                passengerSick[i] = false;
+                passengersCount--;
+
+                if (passengersCount <= 0) {
+                    passengersCount = 0;
+                }
+            }
+            else {
+                // klik vezuje pojas
+                passengerBuckled[i] = true;
+            }
+            break;
+        }
+    }
+
+    leftMouseWasPressed = leftNow;
+}
+
+void render(
+    GLuint basicShader,
+    GLuint VAO,
+    GLint uOffsetLocation,
+    GLint uUseTextureLocation,
+    GLint uTransparencyLocation,
+    int TRACK_VERTEX_COUNT,
+    int WAGON_START_INDEX,
+    int PASSENGER_START_INDEX,
+    int NAME_QUAD_START,
+    const std::vector<Vertex>& vertices,
+    const std::vector<bool>& segmentHasPassenger,
+    const std::vector<bool>& passengerBuckled,
+    const std::vector<bool>& passengerSick,
+    const std::vector<float>& segOffsetX,
+    const std::vector<float>& segOffsetY,
+    GLuint wagonTexture,
+    GLuint passengerTexture,
+    GLuint seatbeltTexture,
+    GLuint sickPassengerTexture,
+    GLuint nameTexture
+)
+{
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(basicShader);
+    glBindVertexArray(VAO);
+
+    glUniform1i(uUseTextureLocation, GL_FALSE);
+    glUniform2f(uOffsetLocation, 0.0f, 0.0f);
+    glDrawArrays(GL_LINE_STRIP, 0, TRACK_VERTEX_COUNT);
+
+    for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+        float offsetXSeg = segOffsetX[i];
+        float offsetYSeg = segOffsetY[i];
+        glUniform2f(uOffsetLocation, offsetXSeg, offsetYSeg);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, wagonTexture);
+        glUniform1i(uUseTextureLocation, GL_TRUE);
+
+        int carStartIndex = WAGON_START_INDEX + i * WAGON_VERTEX_COUNT_PER_SEGMENT;
+        glDrawArrays(GL_TRIANGLE_FAN, carStartIndex, WAGON_VERTEX_COUNT_PER_SEGMENT);
+
+        if (segmentHasPassenger[i]) {
+            unsigned int tex;
+
+            if (passengerSick[i] && sickPassengerTexture != 0) {
+                tex = sickPassengerTexture;
+            }
+            else {
+                tex = passengerBuckled[i] ? seatbeltTexture : passengerTexture;
+            }
+
+            glBindTexture(GL_TEXTURE_2D, tex);
+
+            int passengerStart =
+                PASSENGER_START_INDEX + i * PASSENGER_VERTEX_COUNT_PER_SEGMENT;
+            glDrawArrays(GL_TRIANGLE_FAN, passengerStart, PASSENGER_VERTEX_COUNT_PER_SEGMENT);
+        }
+    }
+
+    glUniform2f(uOffsetLocation, 0.0f, 0.0f);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, nameTexture);
+    glUniform1i(uUseTextureLocation, GL_TRUE);
+
+    glUniform1f(uTransparencyLocation, 1.0f);
+
+    glUniform1f(uTransparencyLocation, 0.5f);
+
+    glDrawArrays(GL_TRIANGLE_FAN, NAME_QUAD_START, 4);
+
+    glUniform1f(uTransparencyLocation, 1.0f);
+}
+
 int main()
 {
     // Inicijalizacija GLFW
@@ -444,26 +770,9 @@ int main()
 
     glClearColor(0.3f, 0.1f, 0.6f, 1.0f);
 
-    // animacione promenljive
     double lastTime = glfwGetTime();
-    const double TARGET_FRAME_TIME = 1.0 / 75.0;
-
-    // ubrzanje i brzina
-    const float START_ACCEL = 0.4f;
-    const float GRAVITY_ACCEL = 1.8f;
-    const float MAX_SPEED = 1.6f;
-    const float MIN_SPEED = 0.1f;
-
-    // konstanta brzina povratka
-    const float RETURN_SPEED = 0.8f;
-    const float EMERGENCY_RETURN_SPEED = 0.3f;
-    // negativno ubrzanje
-    const float EMERGENCY_DECEL = 1.2f;
 
     float currentSpeed = 0.0f;
-
-    const float SEGMENT_SPACING = WAGON_SEGMENT_SIZE + WAGON_GAP;
-    const float START_S_HEAD = (WAGON_SEGMENTS - 1) * SEGMENT_SPACING;
 
     float sHead = START_S_HEAD;
     bool  isRunning = false;
@@ -473,13 +782,11 @@ int main()
     bool isDisembarking = false; //iskrcavanje u toku
 
     double waitTimer = 0.0;
-    const double WAIT_TIME = 3.0;
 
     // hitna situacija
     bool  isEmergencyDecel = false;
     bool  isEmergencyWaiting = false;
     double emergencyWaitTimer = 0.0;
-    const double EMERGENCY_WAIT_TIME = 10.0;
     bool  returnFromEmergency = false;
     int   sickPassengerIndex = -1;
 
@@ -525,242 +832,68 @@ int main()
             returnFromEmergency
         );
 
-        if (isRunning && !isEmergencyDecel) {
-            float maxHead = trackTotalLength;
+        updateState(
+            deltaTime,
+            sHead,
+            currentSpeed,
+            isRunning,
+            isReturning,
+            isWaitingBeforeReturn,
+            isDisembarking,
+            waitTimer,
+            isEmergencyDecel,
+            isEmergencyWaiting,
+            emergencyWaitTimer,
+            returnFromEmergency,
+            passengerBuckled,
+            passengerSick,
+            trackS,
+            trackTotalLength,
+            vertices,
+            segmentCenterX,
+            segmentCenterY,
+            segOffsetX,
+            segOffsetY,
+            segmentHasPassenger,
+            passengersCount
+        );
 
-            // deo staze za računjanje nagiba
-            float ds = trackTotalLength / NUM_TRACK_POINTS;
+        handleMouseClick(
+            window,
+            leftMouseWasPressed,
+            isDisembarking,
+            passengersCount,
+            segmentHasPassenger,
+            passengerBuckled,
+            passengerSick,
+            PASSENGER_START_INDEX,
+            vertices,
+            segOffsetX,
+            segOffsetY
+        );
 
-            float x0, y0, x1, y1;
-            getPointOnTrack(sHead, x0, y0, vertices, trackS, trackTotalLength);
-            getPointOnTrack(sHead + ds, x1, y1, vertices, trackS, trackTotalLength);
-
-            float dy = y1 - y0;            // ako je dy < 0 -> nizbrdica, dy > 0 -> uzbrdica
-
-            float accel = START_ACCEL + (-dy) * GRAVITY_ACCEL;
-
-            // update brzine
-            currentSpeed += accel * static_cast<float>(deltaTime);
-
-            if (currentSpeed > MAX_SPEED) currentSpeed = MAX_SPEED;
-            if (currentSpeed < MIN_SPEED) currentSpeed = MIN_SPEED;
-
-            // pomeranje po stazi
-            sHead += currentSpeed * static_cast<float>(deltaTime);
-
-            if (sHead >= maxHead) {
-                sHead = maxHead;
-                isRunning = false;
-                currentSpeed = 0.0f;
-                isWaitingBeforeReturn = true;
-                waitTimer = 0.0;
-            }
-        }
-
-        if (isEmergencyDecel) {
-            currentSpeed -= EMERGENCY_DECEL * static_cast<float>(deltaTime);
-            if (currentSpeed < 0.0f) currentSpeed = 0.0f;
-
-            // voz se pomera jos malo dok ne stane
-            sHead += currentSpeed * static_cast<float>(deltaTime);
-
-            if (sHead > trackTotalLength) {
-                sHead = trackTotalLength;
-            }
-
-            // cekamo 10sekundi
-            if (currentSpeed <= 0.01f) {
-                currentSpeed = 0.0f;
-                isEmergencyDecel = false;
-                isRunning = false;
-
-                isEmergencyWaiting = true;
-                emergencyWaitTimer = 0.0;
-                returnFromEmergency = true;  // znaci da se vraca sporije
-            }
-        }
-
-        if (isWaitingBeforeReturn) {
-            waitTimer += deltaTime;
-
-            if (waitTimer >= WAIT_TIME) {
-                isWaitingBeforeReturn = false;
-                isReturning = true;
-            }
-        }
-
-        // cekamo 10 sekundi
-        if (isEmergencyWaiting) {
-            emergencyWaitTimer += deltaTime;
-            if (emergencyWaitTimer >= EMERGENCY_WAIT_TIME) {
-                isEmergencyWaiting = false;
-                isReturning = true;
-            }
-        }
-
-        // povratak voza unazad konstantnom brzinom
-        if (isReturning) {
-            float usedReturnSpeed = returnFromEmergency ? EMERGENCY_RETURN_SPEED
-                : RETURN_SPEED;
-
-            sHead -= usedReturnSpeed * static_cast<float>(deltaTime);
-
-            if (sHead <= START_S_HEAD) {
-                sHead = START_S_HEAD;
-                isReturning = false;
-                currentSpeed = 0.0f;
-
-                // svi putnici se odvezuju i vracaju u normalno stanje
-                for (int i = 0; i < WAGON_SEGMENTS; ++i) {
-                    passengerBuckled[i] = false;
-                    passengerSick[i] = false;
-                }
-
-                // rezim uklanjanja putnika
-                isDisembarking = false;
-                for (int i = 0; i < WAGON_SEGMENTS; ++i) {
-                    if (segmentHasPassenger[i]) {
-                        isDisembarking = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        // racuna offset za svaki segment za ovaj frejm
-        for (int i = 0; i < WAGON_SEGMENTS; ++i) {
-            float sSeg = sHead - i * SEGMENT_SPACING;
-
-            float pathXSeg, pathYSeg;
-            getPointOnTrack(sSeg, pathXSeg, pathYSeg,
-                vertices, trackS, trackTotalLength);
-
-            segOffsetX[i] = pathXSeg - segmentCenterX[i];
-            segOffsetY[i] = pathYSeg - segmentCenterY;
-        }
-
-        // levi klik
-        bool leftNow = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
-        if (leftNow && !leftMouseWasPressed) {
-            double mouseX, mouseY;
-            glfwGetCursorPos(window, &mouseX, &mouseY);
-
-            int fbWidth2, fbHeight2;
-            glfwGetFramebufferSize(window, &fbWidth2, &fbHeight2);
-
-            float xNdc = 2.0f * static_cast<float>(mouseX) / fbWidth2 - 1.0f;
-            float yNdc = -2.0f * static_cast<float>(mouseY) / fbHeight2 + 1.0f;
-
-            for (int i = 0; i < WAGON_SEGMENTS; ++i) {
-
-                if (isDisembarking) {
-                    if (!segmentHasPassenger[i]) continue;
-                }
-                else {
-                    if (!segmentHasPassenger[i] || passengerBuckled[i]) continue;
-                }
-
-                int pStart = PASSENGER_START_INDEX + i * PASSENGER_VERTEX_COUNT_PER_SEGMENT;
-                const Vertex& v0 = vertices[pStart + 0];
-                const Vertex& v1 = vertices[pStart + 1];
-                const Vertex& v2 = vertices[pStart + 2];
-                const Vertex& v3 = vertices[pStart + 3];
-
-                float minX = v0.x, maxX = v0.x;
-                float minY = v0.y, maxY = v0.y;
-
-                auto expandBounds = [&](const Vertex& v) {
-                    if (v.x < minX) minX = v.x;
-                    if (v.x > maxX) maxX = v.x;
-                    if (v.y < minY) minY = v.y;
-                    if (v.y > maxY) maxY = v.y;
-                    };
-
-                expandBounds(v1);
-                expandBounds(v2);
-                expandBounds(v3);
-
-                minX += segOffsetX[i];
-                maxX += segOffsetX[i];
-                minY += segOffsetY[i];
-                maxY += segOffsetY[i];
-
-                if (xNdc >= minX && xNdc <= maxX &&
-                    yNdc >= minY && yNdc <= maxY)
-                {
-                    if (isDisembarking) {
-                        // klik uklanja putnika
-                        segmentHasPassenger[i] = false;
-                        passengerBuckled[i] = false;
-                        passengerSick[i] = false;
-                        passengersCount--;
-
-                        if (passengersCount <= 0) {
-                            passengersCount = 0;
-                            isDisembarking = false;   // kada svi putnici napuste voz
-                        }
-                    }
-                    else {
-                        // klik vezuje pojas
-                        passengerBuckled[i] = true;
-                    }
-                    break;
-                }
-            }
-        }
-        leftMouseWasPressed = leftNow;
-
-        glClear(GL_COLOR_BUFFER_BIT);
-
-        glUseProgram(basicShader);
-        glBindVertexArray(VAO);
-
-        glUniform1i(uUseTextureLocation, GL_FALSE);
-        glUniform2f(uOffsetLocation, 0.0f, 0.0f);
-        glDrawArrays(GL_LINE_STRIP, 0, TRACK_VERTEX_COUNT);
-
-        for (int i = 0; i < WAGON_SEGMENTS; ++i) {
-            float offsetXSeg = segOffsetX[i];
-            float offsetYSeg = segOffsetY[i];
-            glUniform2f(uOffsetLocation, offsetXSeg, offsetYSeg);
-
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, wagonTexture);
-            glUniform1i(uUseTextureLocation, GL_TRUE);
-
-            int carStartIndex = WAGON_START_INDEX + i * WAGON_VERTEX_COUNT_PER_SEGMENT;
-            glDrawArrays(GL_TRIANGLE_FAN, carStartIndex, WAGON_VERTEX_COUNT_PER_SEGMENT);
-
-            if (segmentHasPassenger[i]) {
-                unsigned int tex;
-
-                if (passengerSick[i] && sickPassengerTexture != 0) {
-                    tex = sickPassengerTexture;
-                }
-                else {
-                    tex = passengerBuckled[i] ? seatbeltTexture : passengerTexture;
-                }
-
-                glBindTexture(GL_TEXTURE_2D, tex);
-
-                int passengerStart =
-                    PASSENGER_START_INDEX + i * PASSENGER_VERTEX_COUNT_PER_SEGMENT;
-                glDrawArrays(GL_TRIANGLE_FAN, passengerStart, PASSENGER_VERTEX_COUNT_PER_SEGMENT);
-            }
-        }
-
-        glUniform2f(uOffsetLocation, 0.0f, 0.0f);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, nameTexture);
-        glUniform1i(uUseTextureLocation, GL_TRUE);
-
-        glUniform1f(uTransparencyLocation, 1.0f);
-
-        glUniform1f(uTransparencyLocation, 0.5f);
-
-        glDrawArrays(GL_TRIANGLE_FAN, NAME_QUAD_START, 4);
-
-        glUniform1f(uTransparencyLocation, 1.0f);
+        render(
+            basicShader,
+            VAO,
+            uOffsetLocation,
+            uUseTextureLocation,
+            uTransparencyLocation,
+            TRACK_VERTEX_COUNT,
+            WAGON_START_INDEX,
+            PASSENGER_START_INDEX,
+            NAME_QUAD_START,
+            vertices,
+            segmentHasPassenger,
+            passengerBuckled,
+            passengerSick,
+            segOffsetX,
+            segOffsetY,
+            wagonTexture,
+            passengerTexture,
+            seatbeltTexture,
+            sickPassengerTexture,
+            nameTexture
+        );
 
         glfwSwapBuffers(window);
         glfwPollEvents();
