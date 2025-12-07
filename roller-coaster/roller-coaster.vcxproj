@@ -142,6 +142,7 @@
   </ItemGroup>
   <ItemGroup>
     <Image Include="res\car.png" />
+    <Image Include="res\cursor.png" />
     <Image Include="res\ime.png" />
     <Image Include="res\passenger.png" />
     <Image Include="res\passenger_sick.png" />

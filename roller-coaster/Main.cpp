@@ -10,6 +10,9 @@
 #include <thread>
 #include <chrono>
 
+#include "stb_image.h"
+
+
 struct Vertex {
     float x, y;
     float u, v;
@@ -201,6 +204,59 @@ int main()
     );
     if (window == NULL) return endProgram("Prozor nije uspeo da se kreira.");
     glfwMakeContextCurrent(window);
+
+    int curWidth, curHeight, curChannels;
+    unsigned char* cursorPixels = stbi_load("res/cursor.png",
+        &curWidth, &curHeight,
+        &curChannels, 4);
+
+    if (cursorPixels)
+    {
+        float scale = 0.05f;
+        int smallW = std::max(1, int(curWidth * scale));
+        int smallH = std::max(1, int(curHeight * scale));
+
+        std::vector<unsigned char> smallPixels(smallW * smallH * 4);
+
+        for (int y = 0; y < smallH; ++y) {
+            for (int x = 0; x < smallW; ++x) {
+                int srcX = int(float(x) / scale);
+                int srcY = int(float(y) / scale);
+                if (srcX >= curWidth)  srcX = curWidth - 1;
+                if (srcY >= curHeight) srcY = curHeight - 1;
+
+                int dstIndex = (y * smallW + x) * 4;
+                int srcIndex = (srcY * curWidth + srcX) * 4;
+
+                smallPixels[dstIndex + 0] = cursorPixels[srcIndex + 0]; // R
+                smallPixels[dstIndex + 1] = cursorPixels[srcIndex + 1]; // G
+                smallPixels[dstIndex + 2] = cursorPixels[srcIndex + 2]; // B
+                smallPixels[dstIndex + 3] = cursorPixels[srcIndex + 3]; // A
+            }
+        }
+
+        stbi_image_free(cursorPixels);
+
+        GLFWimage cursorImage;
+        cursorImage.width = smallW;
+        cursorImage.height = smallH;
+        cursorImage.pixels = smallPixels.data();
+
+        int hotspotX = smallW / 2;
+        int hotspotY = smallH / 2;
+
+        GLFWcursor* cursor = glfwCreateCursor(&cursorImage, hotspotX, hotspotY);
+        if (cursor) {
+            glfwSetCursor(window, cursor);
+        }
+        else {
+            std::cout << "Nemoguce kreirati GLFW kursor!\n";
+        }
+    }
+    else
+    {
+        std::cout << "Nemoguce ucitati sliku kursora!\n";
+    }
 
     int fbWidth, fbHeight;
     glfwGetFramebufferSize(window, &fbWidth, &fbHeight);
