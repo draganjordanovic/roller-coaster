@@ -285,18 +285,28 @@ int main()
     // animacione promenljive
     double lastTime = glfwGetTime();
 
-    // ubrzanje i brzinu
+    // ubrzanje i brzina
     const float START_ACCEL = 0.4f;
     const float GRAVITY_ACCEL = 1.8f;
     const float MAX_SPEED = 1.6f;
     const float MIN_SPEED = 0.1f;
 
+    // konstanta brzina povratka
+    const float RETURN_SPEED = 0.8f;
+
     float currentSpeed = 0.0f;
 
     const float SEGMENT_SPACING = WAGON_SEGMENT_SIZE + WAGON_GAP;
+    const float START_S_HEAD = (WAGON_SEGMENTS - 1) * SEGMENT_SPACING;
 
-    float sHead = (WAGON_SEGMENTS - 1) * SEGMENT_SPACING;
+    float sHead = START_S_HEAD;
     bool  isRunning = false;
+    bool  isReturning = false;
+
+    bool isWaitingBeforeReturn = false;
+
+    double waitTimer = 0.0;
+    const double WAIT_TIME = 3.0;
 
     //da li je određeni segment popunjen putnikom
     std::vector<bool> segmentHasPassenger(WAGON_SEGMENTS, false);
@@ -321,7 +331,7 @@ int main()
 
         // SPACE dodaje putnika
         bool spaceNow = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
-        if (!isRunning && spaceNow && !spaceWasPressed) {
+        if (!isRunning && !isReturning && spaceNow && !spaceWasPressed) {
             if (passengersCount < WAGON_SEGMENTS) {
                 segmentHasPassenger[passengersCount] = true;
                 passengersCount++;
@@ -331,7 +341,7 @@ int main()
 
         // ENTER pokreće voz SAMO ako su svi putnici vezani
         bool enterNow = (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS);
-        if (enterNow && !enterWasPressed && !isRunning) {
+        if (enterNow && !enterWasPressed && !isRunning && !isReturning) {
             bool allSafe = true;
             for (int i = 0; i < WAGON_SEGMENTS; ++i) {
                 if (segmentHasPassenger[i] && !passengerBuckled[i]) {
@@ -371,7 +381,30 @@ int main()
             if (sHead >= maxHead) {
                 sHead = maxHead;
                 isRunning = false;
-                currentSpeed = 0.0f;   // reset brzine za sledeću vožnju
+                currentSpeed = 0.0f;
+                isWaitingBeforeReturn = true;
+                waitTimer = 0.0;
+            }
+        }
+
+        if (isWaitingBeforeReturn) {
+            waitTimer += deltaTime;
+
+            if (waitTimer >= WAIT_TIME) {
+                isWaitingBeforeReturn = false;
+                isReturning = true;
+            }
+        }
+
+        // povratak voza unazad konstantnom brzinom
+        if (isReturning) {
+            sHead -= RETURN_SPEED * static_cast<float>(deltaTime);
+
+            if (sHead <= START_S_HEAD) {
+                sHead = START_S_HEAD;
+                isReturning = false;
+                currentSpeed = 0.0f;
+                // resetovanje putnika i pojaseva
             }
         }
 
