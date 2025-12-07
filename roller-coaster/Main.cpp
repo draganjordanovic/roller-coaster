@@ -301,7 +301,7 @@ void handleKeyboardInput(
                 break;
             }
         }
-        if (allSafe) {
+        if (allSafe && passengersCount>0) {
             sickPassengerIndex = -1;
             std::fill(passengerSick.begin(), passengerSick.end(), false);
             returnFromEmergency = false;
@@ -473,7 +473,7 @@ void updateState(
 void handleMouseClick(
     GLFWwindow* window,
     bool& leftMouseWasPressed,
-    bool isDisembarking,
+    bool& isDisembarking,
     int& passengersCount,
     std::vector<bool>& segmentHasPassenger,
     std::vector<bool>& passengerBuckled,
@@ -545,6 +545,7 @@ void handleMouseClick(
 
                 if (passengersCount <= 0) {
                     passengersCount = 0;
+                    isDisembarking = false;
                 }
             }
             else {
