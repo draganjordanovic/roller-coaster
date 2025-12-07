@@ -40,9 +40,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Image Include="res\train.png">
-      <Filter>Resource Files</Filter>
-    </Image>
     <Image Include="res\car.png">
       <Filter>Resource Files</Filter>
     </Image>
@@ -50,6 +47,9 @@
       <Filter>Resource Files</Filter>
     </Image>
     <Image Include="res\seatbelt.png">
+      <Filter>Resource Files</Filter>
+    </Image>
+    <Image Include="res\passenger_sick.png">
       <Filter>Resource Files</Filter>
     </Image>
   </ItemGroup>

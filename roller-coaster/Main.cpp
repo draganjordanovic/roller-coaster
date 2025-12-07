@@ -211,9 +211,11 @@ int main()
     unsigned int passengerTexture = 0;
     preprocessTexture(passengerTexture, "res/passenger.png");
 
-    // tekstura sa pojasom
     unsigned int seatbeltTexture = 0;
     preprocessTexture(seatbeltTexture, "res/seatbelt.png");
+
+    unsigned int sickPassengerTexture = 0;
+    preprocessTexture(sickPassengerTexture, "res/passenger_sick.png");
 
     glUseProgram(basicShader);
     glUniform1i(uTexLocation, 0);
@@ -293,6 +295,9 @@ int main()
 
     // konstanta brzina povratka
     const float RETURN_SPEED = 0.8f;
+    const float EMERGENCY_RETURN_SPEED = 0.3f;
+    // negativno ubrzanje
+    const float EMERGENCY_DECEL = 1.2f;
 
     float currentSpeed = 0.0f;
 
@@ -308,12 +313,23 @@ int main()
     double waitTimer = 0.0;
     const double WAIT_TIME = 3.0;
 
-    //da li je određeni segment popunjen putnikom
+    // hitna situacija
+    bool  isEmergencyDecel = false;
+    bool  isEmergencyWaiting = false;
+    double emergencyWaitTimer = 0.0;
+    const double EMERGENCY_WAIT_TIME = 10.0;
+    bool  returnFromEmergency = false;
+    int   sickPassengerIndex = -1;
+
+    //da li je odredjeni segment popunjen putnikom
     std::vector<bool> segmentHasPassenger(WAGON_SEGMENTS, false);
     int passengersCount = 0;
 
     // da li je putnik vezan pojasom
     std::vector<bool> passengerBuckled(WAGON_SEGMENTS, false);
+
+    // da li je putniku pozlilo
+    std::vector<bool> passengerSick(WAGON_SEGMENTS, false);
 
     bool spaceWasPressed = false;
     bool leftMouseWasPressed = false;
@@ -331,7 +347,7 @@ int main()
 
         // SPACE dodaje putnika
         bool spaceNow = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
-        if (!isRunning && !isReturning && spaceNow && !spaceWasPressed) {
+        if (!isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting && spaceNow && !spaceWasPressed) {
             if (passengersCount < WAGON_SEGMENTS) {
                 segmentHasPassenger[passengersCount] = true;
                 passengersCount++;
@@ -341,7 +357,7 @@ int main()
 
         // ENTER pokreće voz SAMO ako su svi putnici vezani
         bool enterNow = (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS);
-        if (enterNow && !enterWasPressed && !isRunning && !isReturning) {
+        if (enterNow && !enterWasPressed && !isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting) {
             bool allSafe = true;
             for (int i = 0; i < WAGON_SEGMENTS; ++i) {
                 if (segmentHasPassenger[i] && !passengerBuckled[i]) {
@@ -350,12 +366,33 @@ int main()
                 }
             }
             if (allSafe) {
+                sickPassengerIndex = -1;
+                std::fill(passengerSick.begin(), passengerSick.end(), false);
+                returnFromEmergency = false;
+
                 isRunning = true;
             }
         }
         enterWasPressed = enterNow;
 
-        if (isRunning) {
+        // tasteri 1-8
+        if (isRunning && !isEmergencyDecel) {
+            for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+                int key = GLFW_KEY_1 + i;
+                if (glfwGetKey(window, key) == GLFW_PRESS) {
+                    if (segmentHasPassenger[i]) {
+                        passengerSick[i] = true;
+                        sickPassengerIndex = i;
+
+                        isEmergencyDecel = true;
+                    }
+                    // samo prvi pritisnut taster se prihvata
+                    break;
+                }
+            }
+        }
+
+        if (isRunning && !isEmergencyDecel) {
             float maxHead = trackTotalLength;
 
             // deo staze za računjanje nagiba
@@ -387,6 +424,25 @@ int main()
             }
         }
 
+        if (isEmergencyDecel) {
+            currentSpeed -= EMERGENCY_DECEL * static_cast<float>(deltaTime);
+            if (currentSpeed < 0.0f) currentSpeed = 0.0f;
+
+            // voz se pomera jos malo dok ne stane
+            sHead += currentSpeed * static_cast<float>(deltaTime);
+
+            // cekamo 10sekundi
+            if (currentSpeed <= 0.01f) {
+                currentSpeed = 0.0f;
+                isEmergencyDecel = false;
+                isRunning = false;
+
+                isEmergencyWaiting = true;
+                emergencyWaitTimer = 0.0;
+                returnFromEmergency = true;  // znaci da se vraca sporije
+            }
+        }
+
         if (isWaitingBeforeReturn) {
             waitTimer += deltaTime;
 
@@ -396,15 +452,28 @@ int main()
             }
         }
 
+        // cekamo 10 sekundi
+        if (isEmergencyWaiting) {
+            emergencyWaitTimer += deltaTime;
+            if (emergencyWaitTimer >= EMERGENCY_WAIT_TIME) {
+                isEmergencyWaiting = false;
+                isReturning = true;
+            }
+        }
+
         // povratak voza unazad konstantnom brzinom
         if (isReturning) {
-            sHead -= RETURN_SPEED * static_cast<float>(deltaTime);
+            float usedReturnSpeed = returnFromEmergency ? EMERGENCY_RETURN_SPEED
+                : RETURN_SPEED;
+
+            sHead -= usedReturnSpeed * static_cast<float>(deltaTime);
 
             if (sHead <= START_S_HEAD) {
                 sHead = START_S_HEAD;
                 isReturning = false;
                 currentSpeed = 0.0f;
-                // resetovanje putnika i pojaseva
+
+                // resetovanje za novu voznju
             }
         }
 
@@ -493,7 +562,15 @@ int main()
             glDrawArrays(GL_TRIANGLE_FAN, carStartIndex, WAGON_VERTEX_COUNT_PER_SEGMENT);
 
             if (segmentHasPassenger[i]) {
-                unsigned int tex = passengerBuckled[i] ? seatbeltTexture : passengerTexture;
+                unsigned int tex;
+
+                if (passengerSick[i] && sickPassengerTexture != 0) {
+                    tex = sickPassengerTexture;
+                }
+                else {
+                    tex = passengerBuckled[i] ? seatbeltTexture : passengerTexture;
+                }
+
                 glBindTexture(GL_TEXTURE_2D, tex);
 
                 int passengerStart =
