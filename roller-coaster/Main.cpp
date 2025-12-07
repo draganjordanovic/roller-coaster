@@ -239,6 +239,75 @@ void setupCursor(GLFWwindow* window)
     glfwSetCursor(window, cursor);
 }
 
+void handleKeyboardInput(
+    GLFWwindow* window,
+    bool& spaceWasPressed,
+    bool& enterWasPressed,
+    bool& isRunning,
+    bool& isReturning,
+    bool& isEmergencyDecel,
+    bool& isEmergencyWaiting,
+    bool& isDisembarking,
+    int& passengersCount,
+    std::vector<bool>& segmentHasPassenger,
+    std::vector<bool>& passengerBuckled,
+    std::vector<bool>& passengerSick,
+    int& sickPassengerIndex,
+    bool& returnFromEmergency
+)
+{
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+        glfwSetWindowShouldClose(window, GLFW_TRUE);
+    }
+
+    // SPACE dodaje putnika
+    bool spaceNow = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
+    if (!isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting && !isDisembarking && spaceNow && !spaceWasPressed) {
+        if (passengersCount < WAGON_SEGMENTS) {
+            segmentHasPassenger[passengersCount] = true;
+            passengersCount++;
+        }
+    }
+    spaceWasPressed = spaceNow;
+
+    // ENTER pokreće voz SAMO ako su svi putnici vezani
+    bool enterNow = (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS);
+    if (enterNow && !enterWasPressed && !isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting && !isDisembarking) {
+        bool allSafe = true;
+        for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+            if (segmentHasPassenger[i] && !passengerBuckled[i]) {
+                allSafe = false;
+                break;
+            }
+        }
+        if (allSafe) {
+            sickPassengerIndex = -1;
+            std::fill(passengerSick.begin(), passengerSick.end(), false);
+            returnFromEmergency = false;
+
+            isRunning = true;
+        }
+    }
+    enterWasPressed = enterNow;
+
+    // tasteri 1-8
+    if (isRunning && !isEmergencyDecel) {
+        for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+            int key = GLFW_KEY_1 + i;
+            if (glfwGetKey(window, key) == GLFW_PRESS) {
+                if (segmentHasPassenger[i]) {
+                    passengerSick[i] = true;
+                    sickPassengerIndex = i;
+
+                    isEmergencyDecel = true;
+                }
+                // samo prvi pritisnut taster se prihvata
+                break;
+            }
+        }
+    }
+}
+
 int main()
 {
     // Inicijalizacija GLFW
@@ -435,59 +504,26 @@ int main()
     while (!glfwWindowShouldClose(window))
     {
 
-        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
-            glfwSetWindowShouldClose(window, GLFW_TRUE);
-        }
         double frameStart = glfwGetTime();
         double deltaTime = frameStart - lastTime;
         lastTime = frameStart;
 
-        // SPACE dodaje putnika
-        bool spaceNow = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
-        if (!isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting && !isDisembarking && spaceNow && !spaceWasPressed) {
-            if (passengersCount < WAGON_SEGMENTS) {
-                segmentHasPassenger[passengersCount] = true;
-                passengersCount++;
-            }
-        }
-        spaceWasPressed = spaceNow;
-
-        // ENTER pokreće voz SAMO ako su svi putnici vezani
-        bool enterNow = (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS);
-        if (enterNow && !enterWasPressed && !isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting && !isDisembarking) {
-            bool allSafe = true;
-            for (int i = 0; i < WAGON_SEGMENTS; ++i) {
-                if (segmentHasPassenger[i] && !passengerBuckled[i]) {
-                    allSafe = false;
-                    break;
-                }
-            }
-            if (allSafe) {
-                sickPassengerIndex = -1;
-                std::fill(passengerSick.begin(), passengerSick.end(), false);
-                returnFromEmergency = false;
-
-                isRunning = true;
-            }
-        }
-        enterWasPressed = enterNow;
-
-        // tasteri 1-8
-        if (isRunning && !isEmergencyDecel) {
-            for (int i = 0; i < WAGON_SEGMENTS; ++i) {
-                int key = GLFW_KEY_1 + i;
-                if (glfwGetKey(window, key) == GLFW_PRESS) {
-                    if (segmentHasPassenger[i]) {
-                        passengerSick[i] = true;
-                        sickPassengerIndex = i;
-
-                        isEmergencyDecel = true;
-                    }
-                    // samo prvi pritisnut taster se prihvata
-                    break;
-                }
-            }
-        }
+        handleKeyboardInput(
+            window,
+            spaceWasPressed,
+            enterWasPressed,
+            isRunning,
+            isReturning,
+            isEmergencyDecel,
+            isEmergencyWaiting,
+            isDisembarking,
+            passengersCount,
+            segmentHasPassenger,
+            passengerBuckled,
+            passengerSick,
+            sickPassengerIndex,
+            returnFromEmergency
+        );
 
         if (isRunning && !isEmergencyDecel) {
             float maxHead = trackTotalLength;
