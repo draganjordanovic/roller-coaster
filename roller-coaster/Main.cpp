@@ -7,6 +7,9 @@
 #include <vector>
 #include <cmath>
 
+#include <thread>
+#include <chrono>
+
 struct Vertex {
     float x, y;
     float u, v;
@@ -152,8 +155,8 @@ void getPointOnTrack(float s,
 {
     const int TRACK_VERTEX_COUNT = static_cast<int>(trackS.size());
 
-    while (s < 0.0f)             s += trackTotalLength;
-    while (s > trackTotalLength) s -= trackTotalLength;
+    if (s < 0.0f)            s = 0.0f;
+    if (s > trackTotalLength) s = trackTotalLength;
 
     //trazim indeks segmenta u kome se nalazi dužina s.
     int i = 0;
@@ -186,10 +189,16 @@ int main()
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
-    const int WINDOW_WIDTH = 1800;
-    const int WINDOW_HEIGHT = 1300;
+    GLFWmonitor* monitor = glfwGetPrimaryMonitor();
+    const GLFWvidmode* mode = glfwGetVideoMode(monitor);
 
-    GLFWwindow* window = glfwCreateWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "Rolerkoster", NULL, NULL);
+    GLFWwindow* window = glfwCreateWindow(
+        mode->width,
+        mode->height,
+        "Rolerkoster",
+        monitor,
+        NULL
+    );
     if (window == NULL) return endProgram("Prozor nije uspeo da se kreira.");
     glfwMakeContextCurrent(window);
 
@@ -204,6 +213,7 @@ int main()
     int uOffsetLocation = glGetUniformLocation(basicShader, "uOffset");
     int uUseTextureLocation = glGetUniformLocation(basicShader, "useTexture");
     int uTexLocation = glGetUniformLocation(basicShader, "uTex");
+    int uTransparencyLocation = glGetUniformLocation(basicShader, "uTransparency");
 
     unsigned int wagonTexture = 0;
     preprocessTexture(wagonTexture, "res/car.png");
@@ -217,8 +227,13 @@ int main()
     unsigned int sickPassengerTexture = 0;
     preprocessTexture(sickPassengerTexture, "res/passenger_sick.png");
 
+    unsigned int nameTexture = 0;
+    preprocessTexture(nameTexture, "res/ime.png");
+
     glUseProgram(basicShader);
     glUniform1i(uTexLocation, 0);
+
+    glUniform1f(uTransparencyLocation, 1.0f);
 
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -236,9 +251,24 @@ int main()
     float segmentCenterY = 0.0f;
     int   WAGON_START_INDEX = 0;
     int   PASSENGER_START_INDEX = 0;
+    int   NAME_QUAD_START = 0;
 
     buildTrain(vertices, segmentCenterX, segmentCenterY,
         WAGON_START_INDEX, PASSENGER_START_INDEX);
+
+    NAME_QUAD_START = static_cast<int>(vertices.size());
+
+    float x0 = 0.8f;
+    float x1 = 0.98f;
+    float y0 = 0.8f;
+    float y1 = 0.98f;
+
+    float r = 1.0f, g = 1.0f, b = 1.0f;
+    
+    vertices.push_back({ x0, y0, 0.0f, 0.0f, r, g, b }); // dole levo    
+    vertices.push_back({ x1, y0, 1.0f, 0.0f, r, g, b }); // dole desno    
+    vertices.push_back({ x1, y1, 1.0f, 1.0f, r, g, b }); // gore desno    
+    vertices.push_back({ x0, y1, 0.0f, 1.0f, r, g, b }); // gore levo
 
     unsigned int VAO;
     unsigned int VBO;
@@ -286,6 +316,7 @@ int main()
 
     // animacione promenljive
     double lastTime = glfwGetTime();
+    const double TARGET_FRAME_TIME = 1.0 / 75.0;
 
     // ubrzanje i brzina
     const float START_ACCEL = 0.4f;
@@ -342,9 +373,13 @@ int main()
 
     while (!glfwWindowShouldClose(window))
     {
-        double currentTime = glfwGetTime();
-        double deltaTime = currentTime - lastTime;
-        lastTime = currentTime;
+
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) {
+            glfwSetWindowShouldClose(window, GLFW_TRUE);
+        }
+        double frameStart = glfwGetTime();
+        double deltaTime = frameStart - lastTime;
+        lastTime = frameStart;
 
         // SPACE dodaje putnika
         bool spaceNow = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
@@ -431,6 +466,10 @@ int main()
 
             // voz se pomera jos malo dok ne stane
             sHead += currentSpeed * static_cast<float>(deltaTime);
+
+            if (sHead > trackTotalLength) {
+                sHead = trackTotalLength;
+            }
 
             // cekamo 10sekundi
             if (currentSpeed <= 0.01f) {
@@ -613,8 +652,30 @@ int main()
             }
         }
 
+        glUniform2f(uOffsetLocation, 0.0f, 0.0f);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, nameTexture);
+        glUniform1i(uUseTextureLocation, GL_TRUE);
+
+        glUniform1f(uTransparencyLocation, 1.0f);
+
+        glUniform1f(uTransparencyLocation, 0.5f);
+
+        glDrawArrays(GL_TRIANGLE_FAN, NAME_QUAD_START, 4);
+
+        glUniform1f(uTransparencyLocation, 1.0f);
+
         glfwSwapBuffers(window);
         glfwPollEvents();
+
+        double frameEnd = glfwGetTime();
+        double frameTime = frameEnd - frameStart;
+        if (frameTime < TARGET_FRAME_TIME) {
+            double sleepTime = TARGET_FRAME_TIME - frameTime;
+            std::this_thread::sleep_for(
+                std::chrono::duration<double>(sleepTime)
+            );
+        }
     }
 
     glfwTerminate();
