@@ -30,7 +30,7 @@ constexpr int   WAGON_VERTEX_COUNT_PER_SEGMENT = 4;
 constexpr float WAGON_SEGMENT_SIZE = 0.1f;
 constexpr float WAGON_Y_BOTTOM = -0.9f;
 constexpr float WAGON_Y_TOP = WAGON_Y_BOTTOM + WAGON_SEGMENT_SIZE;
-// Početni x za prvi segment (pre pomeranja po stazi).
+// Pocetni x za prvi segment (pre pomeranja po stazi).
 constexpr float WAGON_X_START = -0.3f;
 constexpr float WAGON_GAP = 0.002f;
 constexpr int   PASSENGER_VERTEX_COUNT_PER_SEGMENT = 4;
@@ -63,7 +63,7 @@ int endProgram(std::string message) {
 }
 
 void preprocessTexture(unsigned& texture, const char* filepath) {
-    texture = loadImageToTexture(filepath); // Učitavanje teksture
+    texture = loadImageToTexture(filepath); // Ucitavanje teksture
     glBindTexture(GL_TEXTURE_2D, texture);  // Vezujemo se za teksturu kako bismo je podesili
 
     glGenerateMipmap(GL_TEXTURE_2D);
@@ -77,11 +77,11 @@ void preprocessTexture(unsigned& texture, const char* filepath) {
 
 // buildTrack
 // Popunjava:
-// - vertices: tačke staze
+// - vertices: tacke staze
 // - trackS:   kumulativne duzine duz staze
 // - trackTotalLength: ukupna duzina staze
 void buildTrack(std::vector<Vertex>& vertices,
-    std::vector<float>& trackS,
+    std::vector<float>& trackS, // trackS[i] je duzina staze do verteksa i
     float& trackTotalLength)
 {
     vertices.clear();
@@ -114,15 +114,15 @@ void buildTrack(std::vector<Vertex>& vertices,
         float dist = std::sqrt(dx * dx + dy * dy);
         trackS[i] = trackS[i - 1] + dist;
     }
-    // ukupna dužina staze je kumulativna dužina do poslednjeg verteksa
+    // ukupna duzina staze je kumulativna duzina do poslednjeg verteksa
     trackTotalLength = trackS[trackVertexCount - 1];
 }
 
 // buildTrain
 void buildTrain(std::vector<Vertex>& vertices,
-    std::vector<float>& segmentCenterX,
-    float& segmentCenterY,
-    int& wagonStartIndex,
+    std::vector<float>& segmentCenterX, //x centri segmenata
+    float& segmentCenterY, //y centri segmenata
+    int& wagonStartIndex, //startni segment u vertices
     int& passengerStartIndex)
 {
     segmentCenterX.assign(WAGON_SEGMENTS, 0.0f);
@@ -149,6 +149,7 @@ void buildTrain(std::vector<Vertex>& vertices,
         float x0 = WAGON_X_START + i * (WAGON_SEGMENT_SIZE + WAGON_GAP);
         float x1 = x0 + WAGON_SEGMENT_SIZE;
 
+        //margine za uvlacenje teksture putnika unutra
         float marginX = 0.015f;
         float marginYBottom = 0.01f;
         float marginYTop = 0.02f;
@@ -170,9 +171,9 @@ void buildTrain(std::vector<Vertex>& vertices,
 }
 
 // getPointOnTrack
-// Za datu duzinu s (udaljenost duz staze od početka) vraća tačku (x,y) na sinama
-void getPointOnTrack(float s,
-    float& outX,
+// Za datu duzinu s (udaljenost duz staze od pocetka) vraca tacku (x,y) na sinama
+void getPointOnTrack(float s, //duzina staze
+    float& outX,  // povratne koordinate x i y
     float& outY,
     const std::vector<Vertex>& vertices,
     const std::vector<float>& trackS,
@@ -183,7 +184,7 @@ void getPointOnTrack(float s,
     if (s < 0.0f)            s = 0.0f;
     if (s > trackTotalLength) s = trackTotalLength;
 
-    //trazim indeks segmenta u kome se nalazi dužina s.
+    //trazi indeks segmenta u kome se nalazi duzina s.
     int i = 0;
     while (i < TRACK_VERTEX_COUNT - 1 && trackS[i + 1] < s) {
         ++i;
@@ -248,6 +249,7 @@ void setupCursor(GLFWwindow* window)
     cursorImage.height = smallH;
     cursorImage.pixels = smallPixels.data();
 
+    //hotspot je centar kursora
     int hotspotX = smallW / 2;
     int hotspotY = smallH / 2;
 
@@ -291,7 +293,7 @@ void handleKeyboardInput(
     }
     spaceWasPressed = spaceNow;
 
-    // ENTER pokreće voz SAMO ako su svi putnici vezani
+    // ENTER pokrece voz samo ako su svi putnici vezani
     bool enterNow = (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS);
     if (enterNow && !enterWasPressed && !isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting && !isDisembarking) {
         bool allSafe = true;
@@ -358,7 +360,7 @@ void updateState(
     if (isRunning && !isEmergencyDecel) {
         float maxHead = trackTotalLength;
 
-        // deo staze za računjanje nagiba
+        // deo staze za racunanje nagiba
         float ds = trackTotalLength / NUM_TRACK_POINTS;
 
         float x0, y0, x1, y1;
@@ -367,7 +369,7 @@ void updateState(
 
         float dy = y1 - y0;            // ako je dy < 0 -> nizbrdica, dy > 0 -> uzbrdica
 
-        float accel = START_ACCEL + (-dy) * GRAVITY_ACCEL;
+        float accel = START_ACCEL + (-dy) * GRAVITY_ACCEL; //uzbrdo sporije, nizbrdo brze
 
         // update brzine
         currentSpeed += accel * static_cast<float>(deltaTime);
@@ -398,7 +400,7 @@ void updateState(
             sHead = trackTotalLength;
         }
 
-        // cekamo 10sekundi
+        // ceka 10sekundi
         if (currentSpeed <= 0.01f) {
             currentSpeed = 0.0f;
             isEmergencyDecel = false;
@@ -419,7 +421,7 @@ void updateState(
         }
     }
 
-    // cekamo 10 sekundi
+    // ceka 10 sekundi
     if (isEmergencyWaiting) {
         emergencyWaitTimer += deltaTime;
         if (emergencyWaitTimer >= EMERGENCY_WAIT_TIME) {
@@ -478,7 +480,7 @@ void handleMouseClick(
     std::vector<bool>& segmentHasPassenger,
     std::vector<bool>& passengerBuckled,
     std::vector<bool>& passengerSick,
-    int PASSENGER_START_INDEX,
+    int PASSENGER_START_INDEX, //gde u vertices pocinju putnici
     const std::vector<Vertex>& vertices,
     const std::vector<float>& segOffsetX,
     const std::vector<float>& segOffsetY
@@ -496,6 +498,7 @@ void handleMouseClick(
     int fbWidth2, fbHeight2;
     glfwGetFramebufferSize(window, &fbWidth2, &fbHeight2);
 
+    //konverzija u ndc
     float xNdc = 2.0f * static_cast<float>(mouseX) / fbWidth2 - 1.0f;
     float yNdc = -2.0f * static_cast<float>(mouseY) / fbHeight2 + 1.0f;
 
@@ -509,6 +512,7 @@ void handleMouseClick(
         }
 
         int pStart = PASSENGER_START_INDEX + i * PASSENGER_VERTEX_COUNT_PER_SEGMENT;
+        // svaki putnik  ima 4 verteksa
         const Vertex& v0 = vertices[pStart + 0];
         const Vertex& v1 = vertices[pStart + 1];
         const Vertex& v2 = vertices[pStart + 2];
@@ -556,7 +560,7 @@ void handleMouseClick(
         }
     }
 
-    leftMouseWasPressed = leftNow;
+    leftMouseWasPressed = leftNow;//cuva za sledeci frejm da li je u ovom frejmu kliknut levi klik
 }
 
 void render(
@@ -780,7 +784,7 @@ int main()
     bool  isReturning = false;
 
     bool isWaitingBeforeReturn = false;
-    bool isDisembarking = false; //iskrcavanje u toku
+    bool isDisembarking = false;
 
     double waitTimer = 0.0;
 
