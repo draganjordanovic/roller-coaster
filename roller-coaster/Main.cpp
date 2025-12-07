@@ -309,6 +309,7 @@ int main()
     bool  isReturning = false;
 
     bool isWaitingBeforeReturn = false;
+    bool isDisembarking = false; //iskrcavanje u toku
 
     double waitTimer = 0.0;
     const double WAIT_TIME = 3.0;
@@ -347,7 +348,7 @@ int main()
 
         // SPACE dodaje putnika
         bool spaceNow = (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS);
-        if (!isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting && spaceNow && !spaceWasPressed) {
+        if (!isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting && !isDisembarking && spaceNow && !spaceWasPressed) {
             if (passengersCount < WAGON_SEGMENTS) {
                 segmentHasPassenger[passengersCount] = true;
                 passengersCount++;
@@ -357,7 +358,7 @@ int main()
 
         // ENTER pokreće voz SAMO ako su svi putnici vezani
         bool enterNow = (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS);
-        if (enterNow && !enterWasPressed && !isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting) {
+        if (enterNow && !enterWasPressed && !isRunning && !isReturning && !isEmergencyDecel && !isEmergencyWaiting && !isDisembarking) {
             bool allSafe = true;
             for (int i = 0; i < WAGON_SEGMENTS; ++i) {
                 if (segmentHasPassenger[i] && !passengerBuckled[i]) {
@@ -473,11 +474,24 @@ int main()
                 isReturning = false;
                 currentSpeed = 0.0f;
 
-                // resetovanje za novu voznju
+                // svi putnici se odvezuju i vracaju u normalno stanje
+                for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+                    passengerBuckled[i] = false;
+                    passengerSick[i] = false;
+                }
+
+                // rezim uklanjanja putnika
+                isDisembarking = false;
+                for (int i = 0; i < WAGON_SEGMENTS; ++i) {
+                    if (segmentHasPassenger[i]) {
+                        isDisembarking = true;
+                        break;
+                    }
+                }
             }
         }
 
-        // izračunamo offset za svaki segment za ovaj frejm
+        // racuna offset za svaki segment za ovaj frejm
         for (int i = 0; i < WAGON_SEGMENTS; ++i) {
             float sSeg = sHead - i * SEGMENT_SPACING;
 
@@ -489,7 +503,7 @@ int main()
             segOffsetY[i] = pathYSeg - segmentCenterY;
         }
 
-        // levi klik – pokušaj da "vežeš pojas" putniku na kog je kliknuto
+        // levi klik
         bool leftNow = (glfwGetMouseButton(window, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS);
         if (leftNow && !leftMouseWasPressed) {
             double mouseX, mouseY;
@@ -502,8 +516,13 @@ int main()
             float yNdc = -2.0f * static_cast<float>(mouseY) / fbHeight2 + 1.0f;
 
             for (int i = 0; i < WAGON_SEGMENTS; ++i) {
-                if (!segmentHasPassenger[i] || passengerBuckled[i])
-                    continue;
+
+                if (isDisembarking) {
+                    if (!segmentHasPassenger[i]) continue;
+                }
+                else {
+                    if (!segmentHasPassenger[i] || passengerBuckled[i]) continue;
+                }
 
                 int pStart = PASSENGER_START_INDEX + i * PASSENGER_VERTEX_COUNT_PER_SEGMENT;
                 const Vertex& v0 = vertices[pStart + 0];
@@ -533,7 +552,22 @@ int main()
                 if (xNdc >= minX && xNdc <= maxX &&
                     yNdc >= minY && yNdc <= maxY)
                 {
-                    passengerBuckled[i] = true;
+                    if (isDisembarking) {
+                        // klik uklanja putnika
+                        segmentHasPassenger[i] = false;
+                        passengerBuckled[i] = false;
+                        passengerSick[i] = false;
+                        passengersCount--;
+
+                        if (passengersCount <= 0) {
+                            passengersCount = 0;
+                            isDisembarking = false;   // kada svi putnici napuste voz
+                        }
+                    }
+                    else {
+                        // klik vezuje pojas
+                        passengerBuckled[i] = true;
+                    }
                     break;
                 }
             }
